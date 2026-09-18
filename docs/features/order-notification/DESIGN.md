@@ -9,7 +9,7 @@ Implements [REQUIREMENTS.md](REQUIREMENTS.md) within the boundaries of [ADR-001]
 3. If `Idempotency-Key` was seen before → return the stored order (200).
 4. User lookup: Redis `user:{id}` → miss → `GET user-service /v1/users/{id}` (timeout 2s, 1 retry) → cache with TTL. 404 → 422 to client; timeout/5xx → 503.
 5. Insert order (and idempotency key) in one DB transaction.
-6. Publish `order.created` with publisher confirms. On publish failure: log at error level, increment a failure metric, still return 201 (see ADR-001 known limitation).
+6. Publish `order.created` with publisher confirms. On publish failure: log at error level (`order.publish_failed` with `orderId` and `correlationId`), still return 201 (see ADR-001 known limitation). The failure counter metric arrives with the observability slice.
 7. Return 201.
 
 ## Data
@@ -36,7 +36,7 @@ exchange orders (topic, durable)
                     notification.order-created.dlq
 ```
 
-The attempt count travels in a message header. The worker uses a bounded prefetch for backpressure (§17). Definitions live in `messaging/rabbitmq/definitions/` and are loaded declaratively.
+The attempt count travels in a message header. The worker uses a bounded prefetch for backpressure (§17). Definitions live in `messaging/rabbitmq/definitions/` and are imported declaratively (locally by the `rabbitmq-init` service; see `messaging/rabbitmq/README.md`).
 
 ## Cache
 
