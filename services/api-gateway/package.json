@@ -1,0 +1,48 @@
+{
+  "name": "api-gateway",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Single entry point: routing, request ids and rate limiting for the Platform Engineering Lab",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "start": "node dist/main.js",
+    "start:dev": "nest start --watch",
+    "start:debug": "nest start --debug 0.0.0.0:9229 --watch",
+    "lint": "eslint \"{src,test}/**/*.ts\"",
+    "test": "jest"
+  },
+  "dependencies": {
+    "@nestjs/common": "^11",
+    "@nestjs/config": "^4",
+    "@nestjs/core": "^11",
+    "@nestjs/platform-express": "^11",
+    "nestjs-pino": "^4",
+    "pino": "^10.3.1",
+    "pino-http": "^11.0.0",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.2",
+    "http-proxy-middleware": "^3.0.7",
+    "express-rate-limit": "^8.7.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@nestjs/cli": "^11",
+    "@nestjs/testing": "^11",
+    "@types/express": "^5.0.6",
+    "@types/jest": "^30.0.0",
+    "@types/node": "^26.6.1",
+    "@types/supertest": "^7.2.1",
+    "eslint": "^10.10.0",
+    "jest": "^30.5.2",
+    "supertest": "^7.2.2",
+    "ts-jest": "^29.4.12",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.70.0"
+  },
+  "overrides": {
+    "multer": "^2.4.0"
+  }
+}
