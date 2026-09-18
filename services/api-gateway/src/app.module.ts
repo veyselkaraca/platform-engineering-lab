@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { Logger, MiddlewareConsumer, Module, NestModule, RequestMethod } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { LoggerModule } from 'nestjs-pino';
+import { remoteKeys, TokenVerifier } from './auth/token-verifier';
 import { Env, validateEnv } from './config/env';
 import { createGateway } from './gateway/gateway';
 import { HealthController } from './health/health.controller';
@@ -42,7 +43,20 @@ export class AppModule implements NestModule {
       },
       upstreamTimeoutMs: this.config.get('UPSTREAM_TIMEOUT_MS'),
       rateLimitPerMinute: this.config.get('RATE_LIMIT_PER_MINUTE'),
+      verifier: new TokenVerifier(
+        remoteKeys(
+          this.config.get('AUTH_JWKS_URL'),
+          this.config.get('AUTH_JWKS_TIMEOUT_MS'),
+          this.config.get('AUTH_JWKS_CACHE_SECONDS'),
+        ),
+        {
+          issuer: this.config.get('AUTH_ISSUER'),
+          audience: this.config.get('AUTH_AUDIENCE'),
+          clockToleranceSeconds: this.config.get('AUTH_CLOCK_TOLERANCE_SECONDS'),
+        },
+      ),
       logError: (message) => this.log.error(message),
+      logWarn: (message) => this.log.warn(message),
     });
     consumer.apply(...gateway).forRoutes({ path: '{*path}', method: RequestMethod.ALL });
   }

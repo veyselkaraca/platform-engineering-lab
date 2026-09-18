@@ -7,6 +7,7 @@ on:
       - "services/user-service/**"
       - "infrastructure/docker/**"
       - "messaging/rabbitmq/**"
+      - "security/keycloak/**"
       - "scripts/**"
       - ".github/workflows/user-service.yml"
       - ".github/workflows/_service.yml"
@@ -15,6 +16,7 @@ on:
       - "services/user-service/**"
       - "infrastructure/docker/**"
       - "messaging/rabbitmq/**"
+      - "security/keycloak/**"
       - "scripts/**"
       - ".github/workflows/user-service.yml"
       - ".github/workflows/_service.yml"
@@ -36,4 +38,5 @@ jobs:
       security-events: write
     with:
       service: user-service
+      smoke-deps: keycloak
       smoke-urls: http://localhost:3001

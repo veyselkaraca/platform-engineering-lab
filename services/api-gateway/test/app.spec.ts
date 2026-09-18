@@ -3,15 +3,21 @@ import { NestExpressApplication } from '@nestjs/platform-express';
 import { Test } from '@nestjs/testing';
 import request from 'supertest';
 import { startUpstream } from './support/upstream';
+import { AUDIENCE, ISSUER, makeKeys, signToken } from './support/tokens';
 
 type Upstream = Awaited<ReturnType<typeof startUpstream>>;
 
 // Boots the real AppModule (logger, config validation, Nest middleware wiring) against stub backends.
+const bearerOf = (t: string) => ({ authorization: `Bearer ${t}` });
+
 describe('api-gateway application', () => {
   let app: INestApplication;
   let users: Upstream;
   let orders: Upstream;
   let notifications: Upstream;
+  let jwks: Upstream;
+  let token: string;
+  let bearer: { authorization: string };
 
   beforeAll(async () => {
     users = await startUpstream();
@@ -20,11 +26,22 @@ describe('api-gateway application', () => {
       res.end(body);
     });
     notifications = await startUpstream();
+    // The identity provider's key endpoint: the real AppModule fetches keys from it over HTTP.
+    const keys = await makeKeys();
+    jwks = await startUpstream((_req, res) => {
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end(JSON.stringify(keys.jwks));
+    });
+    token = await signToken(keys);
+    bearer = bearerOf(token);
     Object.assign(process.env, {
       LOG_LEVEL: 'silent',
       USER_SERVICE_URL: users.url,
       ORDER_SERVICE_URL: orders.url,
       NOTIFICATION_WORKER_URL: notifications.url,
+      AUTH_ISSUER: ISSUER,
+      AUTH_AUDIENCE: AUDIENCE,
+      AUTH_JWKS_URL: jwks.url,
     });
     // Imported after the environment is set: ConfigModule validates it when the module is evaluated.
     const { AppModule } = await import('../src/app.module');
@@ -35,7 +52,7 @@ describe('api-gateway application', () => {
 
   afterAll(async () => {
     await app.close();
-    await Promise.all([users.close(), orders.close(), notifications.close()]);
+    await Promise.all([users.close(), orders.close(), notifications.close(), jwks.close()]);
   });
 
   it('serves its own health endpoints without touching any backend', async () => {
@@ -45,8 +62,8 @@ describe('api-gateway application', () => {
   });
 
   it('routes the three public prefixes to their backends', async () => {
-    await request(app.getHttpServer()).get('/v1/users/u1').expect(200);
-    await request(app.getHttpServer()).get('/v1/notifications?orderId=o1').expect(200);
+    await request(app.getHttpServer()).get('/v1/users/u1').set(bearer).expect(200);
+    await request(app.getHttpServer()).get('/v1/notifications?orderId=o1').set(bearer).expect(200);
     expect(users.seen.map((s) => s.url)).toEqual(['/v1/users/u1']);
     expect(notifications.seen.map((s) => s.url)).toEqual(['/v1/notifications?orderId=o1']);
   });
@@ -54,11 +71,17 @@ describe('api-gateway application', () => {
   it('forwards POST bodies through Nest untouched and correlates the request', async () => {
     const payload = { userId: 'u1', amount: 5, description: 'x' };
 
-    const res = await request(app.getHttpServer()).post('/v1/orders').set('x-request-id', 'trace-app-1').send(payload).expect(201);
+    const res = await request(app.getHttpServer()).post('/v1/orders').set(bearer).set('x-request-id', 'trace-app-1').send(payload).expect(201);
 
     expect(res.body).toEqual(payload);
     expect(res.headers['x-request-id']).toBe('trace-app-1');
     expect(orders.seen.at(-1)?.headers['x-request-id']).toBe('trace-app-1');
+  });
+
+  it('rejects a call without a token before any backend sees it', async () => {
+    const before = users.seen.length;
+    await request(app.getHttpServer()).get('/v1/users/u1').expect(401);
+    expect(users.seen).toHaveLength(before);
   });
 
   it('answers 404 for routes it does not own', () => request(app.getHttpServer()).get('/v1/unknown').expect(404));

@@ -1,4 +1,6 @@
-export interface Env {
+import { AuthEnv, validateAuthEnv } from '../auth/auth.config';
+
+export interface Env extends AuthEnv {
   PORT: number;
   LOG_LEVEL: string;
   USER_SERVICE_URL: string;
@@ -36,5 +38,6 @@ export function validateEnv(raw: Record<string, unknown>): Env {
     // Must exceed the slowest legitimate upstream call (order creation: user lookup + broker publish).
     UPSTREAM_TIMEOUT_MS: positiveInt(raw, 'UPSTREAM_TIMEOUT_MS', 10_000),
     RATE_LIMIT_PER_MINUTE: positiveInt(raw, 'RATE_LIMIT_PER_MINUTE', 120),
+    ...validateAuthEnv(raw),
   };
 }

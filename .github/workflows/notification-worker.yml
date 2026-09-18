@@ -7,6 +7,7 @@ on:
       - "services/notification-worker/**"
       - "infrastructure/docker/**"
       - "messaging/rabbitmq/**"
+      - "security/keycloak/**"
       - "scripts/**"
       - ".github/workflows/notification-worker.yml"
       - ".github/workflows/_service.yml"
@@ -15,6 +16,7 @@ on:
       - "services/notification-worker/**"
       - "infrastructure/docker/**"
       - "messaging/rabbitmq/**"
+      - "security/keycloak/**"
       - "scripts/**"
       - ".github/workflows/notification-worker.yml"
       - ".github/workflows/_service.yml"
@@ -37,5 +39,5 @@ jobs:
     with:
       service: notification-worker
       # The worker is exercised end to end: an order created via order-service must arrive as a notification.
-      smoke-deps: user-service order-service
+      smoke-deps: user-service order-service keycloak
       smoke-urls: http://localhost:3001 http://localhost:3002 http://localhost:3003

@@ -124,17 +124,23 @@ curl -fsS "$GATEWAY_URL/health/live" >/dev/null
 curl -fsS "$GATEWAY_URL/health/ready" >/dev/null
 
 # The caller's request id must be echoed back (and is forwarded to the backends for correlation).
-echoed=$(curl -sS -D - -o /dev/null -H "authorization: Bearer $ADMIN_TOKEN" -H "x-request-id: smoke-gw-$run" "$GATEWAY_URL/v1/users/$user_id" | tr -d '\r' | sed -n 's/^[Xx]-[Rr]equest-[Ii]d: //p')
+echoed=$(curl -sS -D - -o /dev/null -H "authorization: Bearer $CUSTOMER_TOKEN" -H "x-request-id: smoke-gw-$run" "$GATEWAY_URL/v1/users/$user_id" | tr -d '\r' | sed -n 's/^[Xx]-[Rr]equest-[Ii]d: //p')
 [ "$echoed" = "smoke-gw-$run" ] || { echo "smoke FAILED: gateway did not echo x-request-id (got '$echoed')" >&2; exit 1; }
 
-# The whole flow through the single entry point: user -> order -> asynchronous notification.
-gw_user=$CUSTOMER_ID
-gw_order=$(post -H "Idempotency-Key: smoke-gw-$run" \
-  -d "{\"userId\":\"$gw_user\",\"amount\":5,\"description\":\"smoke via gateway\"}" "$GATEWAY_URL/v1/orders" | id_of)
+# The front door refuses anonymous and forged callers before any backend is involved.
+expect "$(status "$GATEWAY_URL/v1/users/$user_id")" 401 "gateway without a token"
+expect "$(status -H "authorization: Bearer $tampered" "$GATEWAY_URL/v1/users/$user_id")" 401 "gateway with a tampered token"
+expect "$(status -H "authorization: Bearer $CUSTOMER_TOKEN" "$GATEWAY_URL/v1/users/$ADMIN_ID")" 403 "customer reading another user through the gateway"
+expect "$(status -H 'content-type: application/json' -H "authorization: Bearer $CUSTOMER_TOKEN" \
+  -d "{\"userId\":\"$OTHER_ID\",\"amount\":1,\"description\":\"x\"}" "$GATEWAY_URL/v1/orders")" 403 "customer ordering for another user through the gateway"
+
+# The whole flow through the single entry point, as the customer: order -> asynchronous notification.
+gw_order=$(post_as "$CUSTOMER_TOKEN" -H "Idempotency-Key: smoke-gw-$run" \
+  -d "{\"userId\":\"$CUSTOMER_ID\",\"amount\":5,\"description\":\"smoke via gateway\"}" "$GATEWAY_URL/v1/orders" | id_of)
 [ -n "$gw_order" ] || { echo "smoke FAILED: no order id through the gateway" >&2; exit 1; }
 
 attempt=0
-while [ "$(get "$GATEWAY_URL/v1/notifications?orderId=$gw_order")" = "[]" ]; do
+while [ "$(get_as "$CUSTOMER_TOKEN" "$GATEWAY_URL/v1/notifications?orderId=$gw_order")" = "[]" ]; do
   attempt=$((attempt + 1))
   [ "$attempt" -lt 30 ] || { echo "smoke FAILED: no notification for order $gw_order through the gateway after 30s" >&2; exit 1; }
   sleep 1

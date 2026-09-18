@@ -3,19 +3,29 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { NextFunction, Request, RequestHandler, Response } from 'express';
 import { rateLimit } from 'express-rate-limit';
 import { createProxyMiddleware } from 'http-proxy-middleware';
+import { KeysUnavailable, TokenInvalid, TokenVerifier } from '../auth/token-verifier';
 
 export interface GatewayConfig {
   /** Path prefix -> upstream base URL, e.g. { '/v1/users': 'http://user-service:3000' }. */
   routes: Record<string, string>;
   upstreamTimeoutMs: number;
   rateLimitPerMinute: number;
+  /** Validates the caller's bearer token before a request is routed; roles and ownership stay with the services. */
+  verifier: TokenVerifier;
   logError: (message: string) => void;
+  logWarn: (message: string) => void;
 }
 
 // When each request entered the gateway, to tell a slow upstream (504) from an unreachable one (502).
 const startedAt = new WeakMap<object, number>();
 
-const STATUS_TEXT: Record<number, string> = { 429: 'Too Many Requests', 502: 'Bad Gateway', 504: 'Gateway Timeout' };
+const STATUS_TEXT: Record<number, string> = {
+  401: 'Unauthorized',
+  429: 'Too Many Requests',
+  502: 'Bad Gateway',
+  503: 'Service Unavailable',
+  504: 'Gateway Timeout',
+};
 const isHealth = (req: Request) => req.originalUrl.startsWith('/health');
 const pathOf = (req: Request) => req.originalUrl.split('?')[0];
 
@@ -57,6 +67,31 @@ function limiter(perMinute: number): RequestHandler {
   });
 }
 
+// Coarse authentication at the front door: a request without a valid token never reaches a backend. The header is
+// forwarded unchanged because every service verifies the token again and authorizes by role and ownership.
+// The client always gets the same generic 401; the reason is only logged. Tokens are never logged.
+function authenticate(config: GatewayConfig): RequestHandler {
+  return async (req: Request, res: Response, next: NextFunction) => {
+    const requestId = String(req.headers['x-request-id']);
+    const match = /^Bearer ([^\s]+)$/i.exec(req.headers.authorization ?? '');
+    if (!match) return reject(res, requestId, 'missing');
+    try {
+      await config.verifier.verify(match[1]);
+    } catch (err) {
+      if (err instanceof TokenInvalid) return reject(res, requestId, err.reason);
+      config.logError(`auth.keys_unavailable requestId=${requestId} cause=${err instanceof KeysUnavailable ? err.message : 'unexpected'}`);
+      return fail(res, 503, 'Authentication is temporarily unavailable');
+    }
+    next();
+  };
+
+  function reject(res: Response, requestId: string, reason: string): void {
+    config.logWarn(`auth.rejected requestId=${requestId} reason=${reason}`);
+    res.setHeader('www-authenticate', 'Bearer');
+    fail(res, 401, 'Invalid or missing token');
+  }
+}
+
 function router(config: GatewayConfig): RequestHandler {
   const proxies = Object.entries(config.routes).map(([prefix, target]) => ({
     prefix,
@@ -81,16 +116,18 @@ function router(config: GatewayConfig): RequestHandler {
     }),
   }));
 
+  const authenticated = authenticate(config);
   return (req, res, next) => {
     if (isHealth(req)) return next();
     const path = pathOf(req);
     const match = proxies.find(({ prefix }) => path === prefix || path.startsWith(`${prefix}/`));
     if (!match) return next(); // unknown route: falls through to the framework's 404
-    void match.proxy(req, res, next);
+    void authenticated(req, res, (err?: unknown) => (err ? next(err) : void match.proxy(req, res, next)));
   };
 }
 
-// Order matters: identify the request, throttle it, then route it.
+// Order matters: identify the request, throttle it (so unauthenticated floods hit the limit before costing a
+// verification), then authenticate and route it.
 export function createGateway(config: GatewayConfig): RequestHandler[] {
   return [requestId(), limiter(config.rateLimitPerMinute), router(config)];
 }

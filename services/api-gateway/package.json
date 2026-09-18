@@ -19,13 +19,14 @@
     "@nestjs/config": "^4",
     "@nestjs/core": "^11",
     "@nestjs/platform-express": "^11",
+    "express-rate-limit": "^8.7.0",
+    "http-proxy-middleware": "^3.0.7",
+    "jose": "^5.10.0",
     "nestjs-pino": "^4",
     "pino": "^10.3.1",
     "pino-http": "^11.0.0",
     "reflect-metadata": "^0.2.2",
-    "rxjs": "^7.8.2",
-    "http-proxy-middleware": "^3.0.7",
-    "express-rate-limit": "^8.7.0"
+    "rxjs": "^7.8.2"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

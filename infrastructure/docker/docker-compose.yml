@@ -219,6 +219,7 @@ services:
       NOTIFICATION_WORKER_URL: http://notification-worker:3000
       UPSTREAM_TIMEOUT_MS: 10000
       RATE_LIMIT_PER_MINUTE: ${RATE_LIMIT_PER_MINUTE:-120}
+      <<: *auth-env
     ports:
       - "127.0.0.1:${API_GATEWAY_HOST_PORT:-8080}:3000"
     # Ordering only: the gateway does not fail when a backend is down (it answers 502 for that route).
