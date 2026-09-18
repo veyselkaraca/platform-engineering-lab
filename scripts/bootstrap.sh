@@ -1,6 +1,17 @@
 #!/bin/sh
-# Idempotent local setup: create git-ignored .env files from the samples if missing.
+# Idempotent local setup: create the git-ignored .env from the sample, and append any keys
+# that were added to the sample since (existing values are never overwritten).
 set -eu
 cd "$(dirname "$0")/.."
-[ -f infrastructure/docker/.env ] || cp infrastructure/docker/.env.example infrastructure/docker/.env
-echo "ready: infrastructure/docker/.env"
+
+sample=infrastructure/docker/.env.example
+env=infrastructure/docker/.env
+
+[ -f "$env" ] || : > "$env"
+while IFS= read -r line; do
+  case "$line" in ''|'#'*) continue ;; esac
+  key=${line%%=*}
+  grep -q "^$key=" "$env" || printf '%s\n' "$line" >> "$env"
+done < "$sample"
+
+echo "ready: $env"

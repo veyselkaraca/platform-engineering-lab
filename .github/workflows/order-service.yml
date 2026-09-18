@@ -1,20 +1,22 @@
-name: user-service
+name: order-service
 
 on:
   push:
     branches: [main]
     paths:
-      - "services/user-service/**"
+      - "services/order-service/**"
       - "infrastructure/docker/**"
+      - "messaging/rabbitmq/**"
       - "scripts/**"
-      - ".github/workflows/user-service.yml"
+      - ".github/workflows/order-service.yml"
       - ".github/workflows/_service.yml"
   pull_request:
     paths:
-      - "services/user-service/**"
+      - "services/order-service/**"
       - "infrastructure/docker/**"
+      - "messaging/rabbitmq/**"
       - "scripts/**"
-      - ".github/workflows/user-service.yml"
+      - ".github/workflows/order-service.yml"
       - ".github/workflows/_service.yml"
   workflow_dispatch:
 
@@ -22,7 +24,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: user-service-${{ github.ref }}
+  group: order-service-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -33,5 +35,7 @@ jobs:
       packages: write
       security-events: write
     with:
-      service: user-service
-      smoke-urls: http://localhost:3001
+      service: order-service
+      # order-service needs user-service at runtime; build it from source for the smoke test.
+      smoke-deps: user-service
+      smoke-urls: http://localhost:3001 http://localhost:3002

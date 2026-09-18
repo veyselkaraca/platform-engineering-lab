@@ -1,19 +1,37 @@
 # Dev overlay: docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
-# Runs the service on the image's Node version with watch mode and a debugger on 9229.
-# Attach with the "user-service: attach (docker)" config in .vscode/launch.json.
+# Runs the services on the image's Node version with watch mode and debuggers
+# (user-service on 9229, order-service on 9230).
+# Attach with the "* attach (docker)" configs in .vscode/launch.json.
+x-dev-service: &dev-service
+  environment: &dev-env
+    LOG_LEVEL: ${LOG_LEVEL:-debug}
+    # Bind mounts on Windows/macOS don't emit fs events; poll instead.
+    TSC_WATCHFILE: PriorityPollingInterval
+    TSC_WATCHDIRECTORY: RecursiveDirectoryUsingDynamicPriorityPolling
+
 services:
   user-service:
     build:
       target: dev
     image: user-service:dev
     environment:
-      LOG_LEVEL: ${LOG_LEVEL:-debug}
-      # Bind mounts on Windows/macOS don't emit fs events; poll instead.
-      TSC_WATCHFILE: PriorityPollingInterval
-      TSC_WATCHDIRECTORY: RecursiveDirectoryUsingDynamicPriorityPolling
+      <<: *dev-env
     ports:
       - "127.0.0.1:9229:9229"
     volumes:
       - ../../services/user-service:/app
+      - /app/node_modules
+    command: ["npm", "run", "start:debug"]
+
+  order-service:
+    build:
+      target: dev
+    image: order-service:dev
+    environment:
+      <<: *dev-env
+    ports:
+      - "127.0.0.1:9230:9229"
+    volumes:
+      - ../../services/order-service:/app
       - /app/node_modules
     command: ["npm", "run", "start:debug"]
