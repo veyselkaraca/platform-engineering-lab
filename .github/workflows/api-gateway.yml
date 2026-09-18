@@ -1,0 +1,41 @@
+name: api-gateway
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "services/api-gateway/**"
+      - "infrastructure/docker/**"
+      - "messaging/rabbitmq/**"
+      - "scripts/**"
+      - ".github/workflows/api-gateway.yml"
+      - ".github/workflows/_service.yml"
+  pull_request:
+    paths:
+      - "services/api-gateway/**"
+      - "infrastructure/docker/**"
+      - "messaging/rabbitmq/**"
+      - "scripts/**"
+      - ".github/workflows/api-gateway.yml"
+      - ".github/workflows/_service.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: api-gateway-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  pipeline:
+    uses: ./.github/workflows/_service.yml
+    permissions:
+      contents: read
+      packages: write
+      security-events: write
+    with:
+      service: api-gateway
+      # The gateway is verified in front of the real backends: a user, an order and its async notification all go through it.
+      smoke-deps: user-service order-service notification-worker
+      smoke-urls: http://localhost:3001 http://localhost:3002 http://localhost:3003 http://localhost:8080

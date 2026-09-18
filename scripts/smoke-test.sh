@@ -1,14 +1,17 @@
 #!/bin/sh
 # Post-deploy / post-build smoke test.
-# Usage: smoke-test.sh [user-service-url] [order-service-url] [notification-worker-url]
+# Usage: smoke-test.sh [user-service-url] [order-service-url] [notification-worker-url] [api-gateway-url]
 # Checks user-service; with an order-service URL it also checks the order flow, including idempotent replay;
-# with a notification-worker URL it also waits for the order's event to be processed (async path).
+# with a notification-worker URL it also waits for the order's event to be processed (async path);
+# with an api-gateway URL it also runs the whole flow again through the public entry point.
+# Arguments are positional: each one needs the ones before it.
 # Exits non-zero on the first failure. Safe to re-run (unique email and idempotency key per run).
 set -eu
 
 USER_URL="${1:-http://localhost:3001}"
 ORDER_URL="${2:-}"
 WORKER_URL="${3:-}"
+GATEWAY_URL="${4:-}"
 
 id_of() { sed -n 's/.*"id":"\([^"]*\)".*/\1/p'; }
 post() { curl -fsS -H 'content-type: application/json' "$@"; }
@@ -65,3 +68,32 @@ count=$(printf '%s' "$found" | grep -o '"eventId"' | wc -l | tr -d ' ')
 [ "$count" = "1" ] || { echo "smoke FAILED: expected 1 notification for order $order_id, found $count" >&2; exit 1; }
 
 echo "smoke OK: notification-worker ($WORKER_URL)"
+
+[ -n "$GATEWAY_URL" ] || exit 0
+
+curl -fsS "$GATEWAY_URL/health/live" >/dev/null
+curl -fsS "$GATEWAY_URL/health/ready" >/dev/null
+
+# The caller's request id must be echoed back (and is forwarded to the backends for correlation).
+echoed=$(curl -sS -D - -o /dev/null -H "x-request-id: smoke-gw-$run" "$GATEWAY_URL/v1/users/$user_id" | tr -d '\r' | sed -n 's/^[Xx]-[Rr]equest-[Ii]d: //p')
+[ "$echoed" = "smoke-gw-$run" ] || { echo "smoke FAILED: gateway did not echo x-request-id (got '$echoed')" >&2; exit 1; }
+
+# The whole flow through the single entry point: user -> order -> asynchronous notification.
+gw_user=$(post -d "{\"email\":\"smoke-gw-$run@example.com\",\"name\":\"Smoke GW\"}" "$GATEWAY_URL/v1/users" | id_of)
+[ -n "$gw_user" ] || { echo "smoke FAILED: no user id through the gateway" >&2; exit 1; }
+gw_order=$(post -H "Idempotency-Key: smoke-gw-$run" \
+  -d "{\"userId\":\"$gw_user\",\"amount\":5,\"description\":\"smoke via gateway\"}" "$GATEWAY_URL/v1/orders" | id_of)
+[ -n "$gw_order" ] || { echo "smoke FAILED: no order id through the gateway" >&2; exit 1; }
+
+attempt=0
+while [ "$(curl -fsS "$GATEWAY_URL/v1/notifications?orderId=$gw_order")" = "[]" ]; do
+  attempt=$((attempt + 1))
+  [ "$attempt" -lt 30 ] || { echo "smoke FAILED: no notification for order $gw_order through the gateway after 30s" >&2; exit 1; }
+  sleep 1
+done
+
+# Routes the gateway does not own must not leak through to a backend.
+code=$(curl -sS -o /dev/null -w '%{http_code}' "$GATEWAY_URL/v1/unknown")
+[ "$code" = "404" ] || { echo "smoke FAILED: unknown route returned $code through the gateway, expected 404" >&2; exit 1; }
+
+echo "smoke OK: api-gateway ($GATEWAY_URL)"

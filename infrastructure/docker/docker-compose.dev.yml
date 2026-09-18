@@ -1,6 +1,6 @@
 # Dev overlay: docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
 # Runs the services on the image's Node version with watch mode and debuggers
-# (user-service on 9229, order-service on 9230, notification-worker on 9231).
+# (user-service 9229, order-service 9230, notification-worker 9231, api-gateway 9232).
 # Attach with the "* attach (docker)" configs in .vscode/launch.json.
 x-dev-service: &dev-service
   environment: &dev-env
@@ -46,5 +46,18 @@ services:
       - "127.0.0.1:9231:9229"
     volumes:
       - ../../services/notification-worker:/app
+      - /app/node_modules
+    command: ["npm", "run", "start:debug"]
+
+  api-gateway:
+    build:
+      target: dev
+    image: api-gateway:dev
+    environment:
+      <<: *dev-env
+    ports:
+      - "127.0.0.1:9232:9229"
+    volumes:
+      - ../../services/api-gateway:/app
       - /app/node_modules
     command: ["npm", "run", "start:debug"]

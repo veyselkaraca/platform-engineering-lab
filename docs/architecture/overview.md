@@ -25,8 +25,8 @@ Sync (HTTP) and async (RabbitMQ) paths are kept distinct on purpose: the sync pa
 
 | Component | Why it exists | Depends on | On failure |
 |---|---|---|---|
-| api-gateway | One authenticated entry point | Keycloak (JWKS), downstream services | Returns 502/504 with structured error; unhealthy readiness removes it from traffic |
-| user-service | Owns user data | PostgreSQL | Readiness fails, gateway returns 503 |
+| api-gateway | One entry point: routing, request-id correlation, rate limiting (authentication arrives with Keycloak) | Downstream services per route (Keycloak JWKS later) | 502/504 with a structured error for the affected route only; readiness is independent of the backends so a backend outage never takes the gateway out of rotation |
+| user-service | Owns user data | PostgreSQL | Readiness fails and traffic is removed; while it is unreachable the gateway answers 502 for `/v1/users` |
 | order-service | Owns orders, emits events | PostgreSQL, user-service, RabbitMQ; Redis optional | Redis down → falls back to user-service; RabbitMQ down → order accepted, publish failure logged and alerted (see ADR-001 limitation); user-service down → 503 |
 | notification-worker | Async consumer with retry/DLQ | RabbitMQ, PostgreSQL | Message retried with bound, then dead-lettered; healthy messages are not blocked |
 | PostgreSQL | Persistent state, one DB per service | — | Dependent services fail readiness |

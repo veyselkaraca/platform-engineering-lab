@@ -45,6 +45,21 @@
         "<node_internals>/**",
         "**/node_modules/**"
       ]
+    },
+    {
+      "name": "api-gateway: attach (docker)",
+      "type": "node",
+      "request": "attach",
+      "address": "localhost",
+      "port": 9232,
+      "restart": true,
+      "sourceMaps": true,
+      "localRoot": "${workspaceFolder}/services/api-gateway",
+      "remoteRoot": "/app",
+      "skipFiles": [
+        "<node_internals>/**",
+        "**/node_modules/**"
+      ]
     }
   ]
 }

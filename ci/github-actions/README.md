@@ -5,8 +5,8 @@ GitHub only runs workflows from `.github/workflows/`, so the executable definiti
 | Workflow | Role |
 |---|---|
 | `_service.yml` | Reusable pipeline shared by every service: verify (lint, test, build, `npm audit`) + CodeQL SAST -> build image (`<commit-sha>` tag) -> Trivy scan -> smoke test via `docker compose` -> publish the same image to GHCR (main only) |
-| `user-service.yml`, `order-service.yml`, `notification-worker.yml` | Thin callers: path filters and per-service inputs (`smoke-deps`, `smoke-urls`) |
+| `user-service.yml`, `order-service.yml`, `notification-worker.yml`, `api-gateway.yml` | Thin callers: path filters and per-service inputs (`smoke-deps`, `smoke-urls`) |
 
-Adding a service means adding one small caller file. The smoke test runs the image under test inside the same compose stack developers use locally; only its dependencies (`smoke-deps`) are built from source and started next to it, so the published artifact is never rebuilt. The notification-worker and order-service pipelines follow an order end to end through user-service, RabbitMQ and the worker.
+Adding a service means adding one small caller file. The smoke test runs the image under test inside the same compose stack developers use locally; only its dependencies (`smoke-deps`) are built from source and started next to it, so the published artifact is never rebuilt. The order-service and notification-worker pipelines follow an order end to end through user-service, RabbitMQ and the worker; the api-gateway pipeline runs the same flow through the gateway.
 
 Deploy and post-deploy verification stages are added when the Kubernetes/Helm slice exists. `scripts/smoke-test.sh` is shared between CI and post-deploy checks.
