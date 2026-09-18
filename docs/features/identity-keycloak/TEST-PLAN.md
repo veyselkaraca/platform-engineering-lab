@@ -143,3 +143,29 @@ Scripted in `tests/chaos` as shell using the smoke helpers; manual until the har
 | Clock skew between services and Keycloak | Small skew tolerated, larger yields 401 `nbf`/`exp` | `auth.rejected reason=expired/nbf` | Fix time sync; tolerance stays bounded |
 | Realm edited but volume reused | Change not applied (import skips existing realm) | Realm content differs from git | Drop `keycloak` database and re-`up` (documented) |
 | Rollback of a service | Endpoints anonymous again | Release notes; smoke step 2 fails | Roll forward; recorded as a security regression |
+
+## Results (as built, 2026-09-19)
+
+| Check | Result |
+|---|---|
+| Unit + HTTP tests (lint, jest, `tsc` build) | user-service 55, order-service 80, notification-worker 65, api-gateway 61 tests pass; lint clean |
+| Verifier matrix | Same 21 cases in every service (`test/token-verifier.spec.ts`) |
+| Remote JWKS: warm cache, expiry, cold start, slow IdP, recovery, rotation, unknown-`kid` cooldown | 8 cases (`test/jwks-outage.spec.ts`, real HTTP server), in every service |
+| Authorization matrix | Covered in each service's `test/http.spec.ts`, plus gateway `test/gateway.spec.ts` and `test/app.spec.ts` (real `AppModule` against a local JWKS server) |
+| Smoke (`scripts/smoke-test.sh`, real Keycloak, whole stack) | Passes; also passes for the user-service-only pipeline shape on a freshly created volume (`down -v`, `up user-service keycloak`) |
+| Chaos (`tests/chaos/keycloak-outage.sh`) | Passes: warm cache keeps working; cold restart with Keycloak down stays live and ready and answers 503; recovers without restarting the service |
+| Logs | No JWT (`eyJ`) in any container's logs after the full run; `auth.rejected reason=…` lines present |
+| ID-10 | 401 from gateway and from a service echo `x-request-id` and carry `WWW-Authenticate: Bearer` |
+| IDN-8 | Clean volume, repeated `up` on an existing volume, and the documented "drop the `keycloak` database" procedure all end with a healthy Keycloak and the realm imported |
+| actionlint on `.github/workflows` | Clean |
+
+Deviations and gaps, stated plainly:
+
+- The **PostgreSQL-backed** distinction between a duplicate `id` and a duplicate email (`users_pkey` vs `users_email_key`) is unit-tested with a mocked driver error and was verified by hand against the compose database (two different 409 messages). There is no automated integration test because `tests/integration` has no harness yet.
+- The **contract** layer (`tests/contract`) is still empty. The forwarded-`Authorization` behavior is covered by `UserDirectory` unit tests (header forwarded, not logged, 403 → 503 rather than "user missing") and by the smoke test.
+- **No e2e harness**: the smoke test is the end-to-end check.
+- The "only the dev realm may contain direct-grant clients and test users" repo check (ID-9) is not automated; there is currently a single realm file.
+- **Secret scanning in CI** (IDN-1) waits for the SAST/dependency-scan slice; until then it is review plus the log check above.
+- **Metrics** (IDN-7) wait for the observability slice; failures are structured log lines today.
+- **Cache-expiry against a real Keycloak** (default one hour) is not exercised by the chaos script; that path is covered by the JWKS unit test with a short TTL.
+- The pipelines have not run on GitHub yet (no push); the CI changes were checked with actionlint and by reproducing the smoke step with docker compose.

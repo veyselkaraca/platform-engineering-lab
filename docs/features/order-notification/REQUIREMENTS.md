@@ -10,7 +10,7 @@ An authenticated customer creates an order; the platform persists it, emits an e
 
 | ID | Requirement |
 |---|---|
-| FR-1 | `POST /v1/users` (admin) creates a user: `email`, `name`. Email is unique. |
+| FR-1 | `POST /v1/users` (admin) registers a user record: `id` (the Keycloak `sub`), `email`, `name`. Id and email are unique. |
 | FR-2 | `GET /v1/users/{id}` returns a user (admin, or the user themself). |
 | FR-3 | `POST /v1/orders` (customer) creates an order: `userId`, `amount`, `description`. The user must exist. |
 | FR-4 | `GET /v1/orders/{id}` returns an order (owner or admin). |
@@ -18,7 +18,7 @@ An authenticated customer creates an order; the platform persists it, emits an e
 | FR-6 | notification-worker consumes `order.created` and stores one notification per event (simulated delivery). |
 | FR-7 | Processing the same event twice produces one notification (idempotent). |
 | FR-8 | Repeatedly failing messages are retried a bounded number of times, then dead-lettered without blocking other messages. |
-| FR-9 | `POST /v1/orders` accepts an `Idempotency-Key` header; a repeated key returns the original order instead of creating another. |
+| FR-9 | `POST /v1/orders` accepts an `Idempotency-Key` header; a repeated key returns the original order instead of creating another; a key already used by a different user gets 409, so one user's order is never returned to another. |
 
 ## Non-functional requirements
 

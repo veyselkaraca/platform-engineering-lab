@@ -5,9 +5,9 @@ Implements [REQUIREMENTS.md](REQUIREMENTS.md) within the boundaries of [ADR-001]
 ## Order creation sequence
 
 1. Gateway verifies the JWT, assigns `x-request-id` if absent, routes to order-service.
-2. order-service verifies the token, checks the `customer` role and that `userId` matches the caller (unless `admin`).
-3. If `Idempotency-Key` was seen before → return the stored order (200).
-4. User lookup: Redis `user:{id}` → miss → `GET user-service /v1/users/{id}` (timeout 2s, 1 retry) → cache with TTL. 404 → 422 to client; timeout/5xx → 503.
+2. order-service verifies the token again, checks the `customer` or `admin` role and that `userId` equals the token `sub` (unless `admin`).
+3. If `Idempotency-Key` was seen before → return the stored order (200), but only when it belongs to the same `userId`; another user reusing the key gets 409.
+4. User lookup: Redis `user:{id}` → miss → `GET user-service /v1/users/{id}` with the caller's own `Authorization` header (timeout 2s, 1 retry) → cache with TTL. 404 → 422 to client; timeout/5xx → 503.
 5. Insert order (and idempotency key) in one DB transaction.
 6. Publish `order.created` with publisher confirms. On publish failure: log at error level (`order.publish_failed` with `orderId` and `correlationId`), still return 201 (see ADR-001 known limitation). The failure counter metric arrives with the observability slice.
 7. Return 201.
@@ -45,13 +45,11 @@ Attempts are counted from RabbitMQ's own `x-death` header (rejections from the m
 
 ## Auth
 
-- Realm `platform-lab`, roles `customer` and `admin`, one client per API audience.
-- Ownership is checked from the token `sub` claim mapped to `userId`.
-- Exact claim mapping is documented in `security/keycloak/README.md` when the realm is defined.
+Implemented by [identity-keycloak](../identity-keycloak/DESIGN.md): realm `platform-lab`, roles `customer` and `admin`, the token `sub` **is** the `userId`, claim mapping in `security/keycloak/README.md`.
 
 ## Configuration (environment variables, per service)
 
-Database URL, Redis URL, RabbitMQ URL, Keycloak issuer/JWKS URL, downstream base URLs, timeouts, cache TTL, retry limits, OTLP endpoint. No defaults for secrets; sample values in `.env.example` are clearly fake.
+Database URL, Redis URL, RabbitMQ URL, token issuer/audience/JWKS URL (`AUTH_*`), downstream base URLs, timeouts, cache TTL, retry limits, OTLP endpoint. No defaults for secrets; sample values in `.env.example` are clearly fake.
 
 ## Deployment and rollback
 

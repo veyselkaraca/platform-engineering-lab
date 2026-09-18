@@ -25,14 +25,14 @@ Sync (HTTP) and async (RabbitMQ) paths are kept distinct on purpose: the sync pa
 
 | Component | Why it exists | Depends on | On failure |
 |---|---|---|---|
-| api-gateway | One entry point: routing, request-id correlation, rate limiting (authentication arrives with Keycloak) | Downstream services per route (Keycloak JWKS later) | 502/504 with a structured error for the affected route only; readiness is independent of the backends so a backend outage never takes the gateway out of rotation |
-| user-service | Owns user data | PostgreSQL | Readiness fails and traffic is removed; while it is unreachable the gateway answers 502 for `/v1/users` |
+| api-gateway | One entry point: routing, request-id correlation, rate limiting, token authentication (a request without a valid token never reaches a backend) | Downstream services per route; Keycloak's key endpoint (cached) | 502/504 with a structured error for the affected route only; 503 if token keys cannot be fetched (never fails open); readiness is independent of the backends and of Keycloak so neither outage takes the gateway out of rotation |
+| user-service | Owns user data (records keyed by the Keycloak `sub`) | PostgreSQL; Keycloak keys (cached) for token checks | Readiness fails and traffic is removed; while it is unreachable the gateway answers 502 for `/v1/users` |
 | order-service | Owns orders, emits events | PostgreSQL, user-service, RabbitMQ; Redis optional | Redis down → falls back to user-service; RabbitMQ down → order accepted, publish failure logged and alerted (see ADR-001 limitation); user-service down → 503 |
 | notification-worker | Async consumer with retry/DLQ | RabbitMQ, PostgreSQL | Message retried with bound, then dead-lettered; healthy messages are not blocked |
 | PostgreSQL | Persistent state, one DB per service | — | Dependent services fail readiness |
 | Redis | Cache only | — | Degrades latency, not correctness |
 | RabbitMQ | Async events | — | Publish/consume degrade; queue depth is alerted |
-| Keycloak | Central identity | PostgreSQL (its own) | New logins fail; already-issued tokens keep validating until expiry |
+| Keycloak | Central identity (realm `platform-lab`, see `security/keycloak/README.md`) | PostgreSQL (its own database) | New logins fail; already-issued tokens keep validating while a service's key cache is warm (default 1 h); after that, and on a cold start, protected endpoints answer 503 (fail closed) while health stays green. Runbook: `docs/operations/runbooks/keycloak-outage.md` |
 
 Uniform for every component (stated once, verified per component in its README): observed through OpenTelemetry logs/metrics/traces and health endpoints; deployed by a Helm release built from an immutable `<service>:<commit-sha>` image; rolled back by redeploying the previous known-good image and config (AGENTS.md §15).
 

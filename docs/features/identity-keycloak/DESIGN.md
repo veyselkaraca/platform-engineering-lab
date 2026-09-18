@@ -1,6 +1,6 @@
 # Feature: identity-keycloak — Design
 
-Implements [REQUIREMENTS.md](REQUIREMENTS.md). Extends [order-notification DESIGN — Auth](../order-notification/DESIGN.md#auth); where they differ, this document is the more specific one.
+Status: **implemented** (all slices below are delivered; deviations from the original plan are marked *as built*). Implements [REQUIREMENTS.md](REQUIREMENTS.md). Extends [order-notification DESIGN — Auth](../order-notification/DESIGN.md#auth); where they differ, this document is the more specific one.
 
 ## Overview
 
@@ -16,7 +16,7 @@ Authentication (who are you, is the token genuine) and authorization (may you do
 
 ## Keycloak and realm
 
-- Image `quay.io/keycloak/keycloak:26.x` (pin an exact tag when implementing), added to `infrastructure/docker/docker-compose.yml` with its own PostgreSQL database `keycloak` (added to `db-init`'s `POSTGRES_MULTIPLE_DATABASES`; `KC_DB=postgres`). Command `start-dev --import-realm` with health enabled. `start-dev` is a local-only mode (HTTP, relaxed hostname); Kubernetes will use `start` with TLS, in its own slice.
+- Image `quay.io/keycloak/keycloak:26.6.1` (exact tag; pulls from `quay.io` work on the corporate network), added to `infrastructure/docker/docker-compose.yml` with its own PostgreSQL database `keycloak` (added to `db-init`'s `POSTGRES_MULTIPLE_DATABASES`; `KC_DB=postgres`). Command `start-dev --import-realm` with health enabled. `start-dev` is a local-only mode (HTTP, relaxed hostname); Kubernetes will use `start` with TLS, in its own slice.
 - Host port `127.0.0.1:${KEYCLOAK_HOST_PORT:-8081}` (management port 9000 stays internal). Admin console credentials are `KC_BOOTSTRAP_ADMIN_*` from `.env`; `.env.example` gets fake values.
 - Healthcheck against `:9000/health/ready` using bash `/dev/tcp` (the image has no curl).
 - `KC_HOSTNAME=http://localhost:8081` pins the token `iss` so it is identical whether a client reaches Keycloak from the host or a container. Services still fetch keys through the internal URL, which does not affect `iss`.
@@ -28,25 +28,25 @@ Authentication (who are you, is the token genuine) and authorization (may you do
 |---|---|
 | Realm | `platform-lab` |
 | Realm roles | `customer`, `admin` (read from `realm_access.roles`) |
-| API audience | `platform-api`: one audience shared by gateway and services. An audience mapper on the client scope adds it to `aud` (Keycloak does not by default). |
+| API audience | `platform-api`: one audience shared by gateway and services. *As built:* an audience mapper on the `platform-lab-dev` client adds the plain string to `aud` (Keycloak does not by default); there is no separate `platform-api` client, so `security/keycloak/{clients,roles}` were dropped and everything lives in the realm JSON. Real clients (auth code + PKCE) join with the real realms. |
 | Client `platform-lab-dev` | Public, direct access grants on, **dev realm only**. Used by smoke/CI/manual tests. |
-| Users | `dev-customer` (role `customer`) and `dev-admin` (role `admin`), fixed UUIDs and fake passwords, all marked fake. |
+| Users | `dev-customer` and `dev-other` (role `customer`), `dev-admin` (role `admin`), fixed UUIDs and fake passwords, all marked fake. *As built:* the second customer `dev-other` exists so the smoke test can prove cross-user cases (404 on someone else's order, 409 on their idempotency key, empty notifications). |
 | Token lifetime | Access token 5 min (IDN-6). No refresh handling in services. |
 
 Fixed user ids are what make `sub == userId` scriptable: the smoke test registers `POST /v1/users {id: <dev-customer sub>, ...}` as `dev-admin`.
 
 ## Verification module (one per service: `src/auth/`)
 
-Built on [`jose`](https://github.com/panva/jose) (`createRemoteJWKSet` + `jwtVerify`); hand-rolling JWKS caching and signature checks would be the riskier option. Pin **`^5`**: it ships CommonJS, while later majors are ESM-only, the same class of problem as NestJS 12 in this repo. Confirm the build still passes with `tsc` on Node 22.13 before adopting.
+Built on [`jose`](https://github.com/panva/jose) (`createRemoteJWKSet` + `jwtVerify`); hand-rolling JWKS caching and signature checks would be the riskier option. Pinned to **`^5`**: it ships CommonJS, while later majors are ESM-only, the same class of problem as NestJS 12 in this repo. Verified: `tsc` builds and Jest runs on Node 22.13, and the images run on Node 22.
 
 | File | Responsibility |
 |---|---|
 | `auth.config.ts` | Validate `AUTH_*` env at startup (IDN-5); fail fast like `validateEnv`. |
 | `token-verifier.ts` | `verify(token) → Principal { sub, roles }`. Wraps `jwtVerify` with `issuer`, `audience`, `algorithms: ['RS256']`, `clockTolerance`. Takes the key resolver as a constructor argument (`createRemoteJWKSet` in production, `createLocalJWKSet` in tests). Maps errors to `TokenInvalid` (→401) or `KeysUnavailable` (→503). |
 | `auth.guard.ts` | Global `APP_GUARD`: skips `@Public()` routes (health), reads `Authorization: Bearer`, verifies, sets `req.principal`, enforces `@Roles(...)`. |
-| `auth.decorators.ts` | `@Public()`, `@Roles(...)`, `@CurrentPrincipal()`, `isAdmin(principal)`. |
+| `auth.decorators.ts` | `@Public()`, `@Roles(...)`, `@CurrentPrincipal()`, `isAdmin(principal)`, and the ownership helpers used by that service: `assertSelfOrAdmin` (403, id known from the request) in user-service and order-service, `ownerOrNotFound` (404, owner known after loading) in order-service. notification-worker filters in its query instead. |
 
-The api-gateway is Express-level, not controller-based, so its copy is an Express middleware using the same `token-verifier.ts`; it checks validity only, not roles.
+The api-gateway is Express-level, not controller-based, so it uses the same `token-verifier.ts` and `auth.config.ts` from an Express middleware (`authenticate` in `gateway.ts`) that runs only for routed prefixes; it checks validity only, not roles. Health endpoints and unknown routes never reach it, so unknown routes stay a plain 404. The gateway logs rejections at warn level (`logWarn`), while unavailable keys are logged as errors.
 
 Rules the verifier enforces: signature via JWKS, `iss == AUTH_ISSUER`, `aud` contains `AUTH_AUDIENCE`, `exp`/`nbf` with small tolerance, algorithm allow-list (rules out `none` and HMAC-with-public-key confusion), `sub` present and a UUID.
 
@@ -100,25 +100,26 @@ The user lookup must pass user-service's own authorization, and service-to-servi
 ### Changes to existing code
 
 - **user-service:** `CreateUserDto` gains a required `id` (`@IsUUID()`); the entity's `@PrimaryGeneratedColumn('uuid')` becomes `@PrimaryColumn('uuid')`. No migration: the column and its default already exist, so the DB change is backward compatible and rollback stays safe. The unique-violation handler tells the two conflicts apart by constraint name (`users_pkey` vs `users_email_key`) and returns 409 with a different message for each. The global `ValidationPipe` is `forbidNonWhitelisted`, so a pre-change release would answer 400 to a body containing `id`; acceptable, because rollback is a security regression anyway (see below).
-- **order-service:** ownership checks in `OrdersService`/controller, `UserDirectory` forwarding, removal of the "arrives with the Keycloak slice" comments.
+- **order-service:** ownership checks in the controller, `UserDirectory` forwarding, removal of the "arrives with the Keycloak slice" comments. *As built, an addition to the plan:* idempotency keys are global, so once identities exist a replay could have returned another user's order. A key whose stored order belongs to a different `userId` now answers 409 (`OrdersService.replay`), before any lookup, insert or publish.
 - **notification-worker:** `findByOrder(orderId, userId?)`.
 - **api-gateway:** middleware placed **after** the rate limiter (so unauthenticated floods hit the limit before costing a verification) and before the proxy; `Authorization` is forwarded unchanged. Client-supplied identity headers such as `x-user-id` are ignored everywhere because nothing reads them.
 
 ## Local runtime, smoke and CI
 
-- `scripts/smoke-test.sh` gets an optional 5th argument (Keycloak base URL, default `http://localhost:8081`) and a `token_for <user>` helper (`curl` against the token endpoint, password grant on `platform-lab-dev`, credentials from the fake dev values). Direct service calls use the admin token; the gateway section runs the customer flow. New checks: no token → 401, customer creating an order for another user → 403.
+- `scripts/smoke-test.sh` gets an optional 5th argument (Keycloak base URL, default `http://localhost:8081`) and a `token_for <user>` helper (`curl` against the token endpoint, password grant on `platform-lab-dev`, credentials from the fake dev values). Users, orders and notifications are exercised as the customer, with the admin registering the customer's record. Checks: no token → 401 (each service and the gateway), tampered token → 401, customer reading/creating for another user → 403, another customer reading the order → 404, replaying the key → 409, another customer's notification list empty, admin sees everything.
+- `tests/chaos/keycloak-outage.sh` scripts the Keycloak outage scenarios against the running stack (warm cache, cold start fail-closed with health green, recovery without restart).
 - Services do **not** `depends_on` Keycloak (IDN-4: they start and stay live without it). The smoke script waits for the token endpoint instead.
 - CI: `smoke-deps` in each service's caller workflow gains `keycloak`. Cost: an extra image pull and roughly a minute of start-up per pipeline run. Accepted; the alternative (skipping auth in CI) violates IDN-9.
 - Networks: `quay.io` is a different registry from Docker Hub; on the corporate network it also goes through the proxy. Verify a pull before relying on it.
 
 ## Delivery slices (one coherent commit each)
 
-1. Keycloak in compose + realm + `security/keycloak/README.md` (claim mapping) + `.env.example`; smoke token helper.
+1. Keycloak in compose + realm + `security/keycloak/README.md` (claim mapping) + `.env.example`; smoke token helper. *(done)*
 2. `src/auth/` in user-service + `id` change + authorization, together with order-service forwarding the caller's `Authorization` header on the user lookup (otherwise user-service enforcement would break order creation); smoke sends tokens on all direct calls.
 3. order-service: `src/auth/`, role and ownership checks.
 4. notification-worker: module, owner filter.
 5. api-gateway: middleware; smoke gateway section, CI `smoke-deps`.
-6. Docs: update `order-notification` docs where they now differ, CLAUDE.md "Current state".
+6. Docs: update `order-notification` docs where they now differ, the runbook, CLAUDE.md "Current state". *(done; slices 2 to 5 are done as well)*
 
 Each slice keeps the stack green: the smoke script sends tokens from slice 2 on (harmless to services that do not enforce yet), and the gateway (slice 5) goes last so services are protected before the front door demands tokens. Order of deployment is otherwise free: the gateway forwards `Authorization`, so mixed versions during a rolling update still behave.
 

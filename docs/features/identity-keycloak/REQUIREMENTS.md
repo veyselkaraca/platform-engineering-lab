@@ -1,6 +1,6 @@
 # Feature: identity-keycloak — Requirements
 
-Status: **accepted** (open questions resolved, see Decisions). Adds centralized authentication (Keycloak, OIDC/OAuth2) and JWT-based authorization to the existing services, as required by AGENTS.md §19. It delivers the auth rules already assumed by [order-notification](../order-notification/REQUIREMENTS.md) (FR-1..FR-4) and [its DESIGN](../order-notification/DESIGN.md#auth).
+Status: **implemented** (see DESIGN for what was built and TEST-PLAN for results). Adds centralized authentication (Keycloak, OIDC/OAuth2) and JWT-based authorization to the existing services, as required by AGENTS.md §19. It delivers the auth rules already assumed by [order-notification](../order-notification/REQUIREMENTS.md) (FR-1..FR-4) and [its DESIGN](../order-notification/DESIGN.md#auth).
 
 ## Problem
 
@@ -22,14 +22,14 @@ User self-registration, password reset/MFA flows, social login/federation, refre
 | ID | Requirement |
 |---|---|
 | ID-1 | Keycloak runs in the local stack with realm `platform-lab`, imported from `security/keycloak/realm/` on start. Import is idempotent. |
-| ID-2 | The realm defines roles `customer` and `admin`, and one client per API audience (gateway-facing API client, plus a dev-only test client, see ID-9). Clients and roles live under `security/keycloak/{clients,roles}` or in the realm JSON, not created by hand. |
+| ID-2 | The realm defines roles `customer` and `admin`, and the dev-only test client (see ID-9). One API audience (`platform-api`) is shared by the gateway and the services. Clients and roles live in the realm JSON, not created by hand. |
 | ID-3 | api-gateway rejects requests to `/v1/*` without a valid bearer token with `401`. Health endpoints stay unauthenticated. |
 | ID-4 | Token validation covers signature (JWKS), `iss`, `aud`, `exp` and `nbf`. Only asymmetric algorithms from the JWKS are accepted (`alg: none` and HMAC rejected). |
 | ID-5 | order-service and user-service validate the token themselves; they do not trust a gateway-set identity header. Direct calls to a service port without a valid token get `401`. |
-| ID-6 | Authorization per endpoint: `POST /v1/users` → `admin`. `GET /v1/users/{id}` → `admin` or the user themself. `POST /v1/orders` → `customer` acting for their own `userId` (an `admin` may act for any). `GET /v1/orders/{id}` → owner or `admin`. `GET /v1/notifications?orderId=` → owner of the order or `admin`. |
+| ID-6 | Authorization per endpoint (idempotency keys are also scoped per user: another user reusing a key gets `409`, never the original order): `POST /v1/users` → `admin`. `GET /v1/users/{id}` → `admin` or the user themself. `POST /v1/orders` → `customer` acting for their own `userId` (an `admin` may act for any). `GET /v1/orders/{id}` → owner or `admin`. `GET /v1/notifications?orderId=` → owner of the order or `admin`. |
 | ID-7 | A valid token without the required role, or whose ownership is decidable from the request alone (path/body id vs. `sub`), gets `403`, distinct from `401`. When ownership is only known after loading the resource, a non-owner gets the same `404` as for a resource that does not exist, so existence is not disclosed. |
 | ID-8 | The token `sub` **is** the `userId` (no mapping table). `POST /v1/users` takes the Keycloak `sub` as the user's `id`. The rule is implemented in one place per service, not per endpoint. |
-| ID-9 | Users are provisioned in the realm, not by the platform. The dev realm ships a test client and fake test users (one `customer`, one `admin`) with fixed ids so `scripts/smoke-test.sh` and CI can obtain tokens. Direct-grant/test users exist only in the dev realm export and are never in an environment-specific realm. |
+| ID-9 | Users are provisioned in the realm, not by the platform. The dev realm ships a test client and fake test users (two `customer`s, one `admin`) with fixed ids so `scripts/smoke-test.sh` and CI can obtain tokens. Direct-grant/test users exist only in the dev realm export and are never in an environment-specific realm. |
 | ID-10 | Correlation is preserved: `401/403` responses carry `x-request-id` and are logged with it. |
 
 ## Non-functional requirements

@@ -37,7 +37,7 @@ Layers follow AGENTS.md §12.5. Failure scenarios follow §28: for each, record 
 | RabbitMQ down in worker | Worker reconnects; no message loss for already-queued messages | Connection metric, queue depth |
 | Poison message | Retried N times, lands in DLQ, others unaffected | DLQ depth alert |
 | Duplicate delivery | One notification | Unique constraint, dedupe counter |
-| Invalid/expired token | 401 at gateway; no downstream call | Auth failure metric |
+| Invalid/expired token | 401 at gateway; no downstream call | `auth.rejected` log now, auth failure metric with observability. Full auth matrix and Keycloak outage scenarios: [identity-keycloak TEST-PLAN](../identity-keycloak/TEST-PLAN.md) |
 | Wrong role / other user's order | 403 | Log with request id |
 | Bad configuration | Service fails startup, does not become ready | Startup probe |
 | Failed deployment | Rollout halts on failed readiness; `helm rollback` restores previous image | Rollout status, smoke test |

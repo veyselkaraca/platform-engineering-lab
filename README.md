@@ -11,7 +11,7 @@ The engineering charter is [AGENTS.md](AGENTS.md). Feature-level docs live in [d
 | `services/` | NestJS microservices (api-gateway, user-service, order-service, notification-worker) |
 | `infrastructure/` | Docker Compose, Kubernetes manifests, Helm chart, Ansible |
 | `observability/` | OpenTelemetry, Prometheus, Grafana, logging, tracing |
-| `security/` | Keycloak realm/clients/roles, Sonar, SAST, dependency and image scanning |
+| `security/` | Keycloak realm, Sonar, SAST, dependency and image scanning |
 | `messaging/` | RabbitMQ definitions and policies |
 | `ci/` | Pipeline definitions per CI engine |
 | `tests/` | Integration, e2e, contract, load, chaos |
