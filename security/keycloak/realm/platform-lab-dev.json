@@ -1,0 +1,62 @@
+{
+  "realm": "platform-lab",
+  "enabled": true,
+  "sslRequired": "external",
+  "registrationAllowed": false,
+  "accessTokenLifespan": 300,
+  "roles": {
+    "realm": [
+      { "name": "customer", "description": "Can place and read their own orders" },
+      { "name": "admin", "description": "Can manage users and read any order" }
+    ]
+  },
+  "clients": [
+    {
+      "clientId": "platform-lab-dev",
+      "name": "DEV ONLY test client (direct grant for smoke/CI/manual tests)",
+      "enabled": true,
+      "publicClient": true,
+      "standardFlowEnabled": false,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": true,
+      "serviceAccountsEnabled": false,
+      "protocolMappers": [
+        {
+          "name": "platform-api-audience",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "config": {
+            "included.custom.audience": "platform-api",
+            "access.token.claim": "true",
+            "id.token.claim": "false",
+            "introspection.token.claim": "true"
+          }
+        }
+      ]
+    }
+  ],
+  "users": [
+    {
+      "id": "c0ffee00-0000-4000-8000-000000000001",
+      "username": "dev-customer",
+      "email": "dev-customer@example.invalid",
+      "emailVerified": true,
+      "firstName": "Dev",
+      "lastName": "Customer",
+      "enabled": true,
+      "credentials": [{ "type": "password", "value": "dev-customer-fake-password", "temporary": false }],
+      "realmRoles": ["customer"]
+    },
+    {
+      "id": "c0ffee00-0000-4000-8000-000000000002",
+      "username": "dev-admin",
+      "email": "dev-admin@example.invalid",
+      "emailVerified": true,
+      "firstName": "Dev",
+      "lastName": "Admin",
+      "enabled": true,
+      "credentials": [{ "type": "password", "value": "dev-admin-fake-password", "temporary": false }],
+      "realmRoles": ["admin"]
+    }
+  ]
+}

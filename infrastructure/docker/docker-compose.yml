@@ -27,7 +27,7 @@ services:
       PGHOST: postgres
       PGUSER: ${POSTGRES_USER}
       PGPASSWORD: ${POSTGRES_PASSWORD}
-      POSTGRES_MULTIPLE_DATABASES: user_service,order_service,notification_worker
+      POSTGRES_MULTIPLE_DATABASES: user_service,order_service,notification_worker,keycloak
     volumes:
       - ./config/postgres/init-databases.sh:/init-databases.sh:ro
     entrypoint: ["sh", "/init-databases.sh"]
@@ -83,6 +83,43 @@ services:
       rabbitmq:
         condition: service_healthy
     restart: "no"
+
+  # Identity provider (docs/features/identity-keycloak). start-dev = local-only mode (HTTP, relaxed hostname).
+  # --import-realm imports security/keycloak/realm/*.json only when the realm does not exist yet, so it is
+  # idempotent but does not apply later edits to a used database (see security/keycloak/README.md).
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.6.1
+    command: ["start-dev", "--import-realm"]
+    environment:
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://postgres:5432/keycloak
+      KC_DB_USERNAME: ${POSTGRES_USER}
+      KC_DB_PASSWORD: ${POSTGRES_PASSWORD}
+      KC_BOOTSTRAP_ADMIN_USERNAME: ${KEYCLOAK_ADMIN_USER:?set in .env}
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:?set in .env}
+      # Pins the token `iss` so it is the same for clients on the host and in containers.
+      KC_HOSTNAME: http://localhost:${KEYCLOAK_HOST_PORT:-8081}
+      KC_HEALTH_ENABLED: "true"
+    volumes:
+      - ../../security/keycloak/realm:/opt/keycloak/data/import:ro
+    ports:
+      - "127.0.0.1:${KEYCLOAK_HOST_PORT:-8081}:8080"
+    # The image has no curl: speak HTTP to the management port (9000) through bash /dev/tcp.
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          exec 3<>/dev/tcp/127.0.0.1/9000 &&
+          printf 'GET /health/ready HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n' >&3 &&
+          grep -q '"status": "UP"' <&3
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 40s
+    depends_on:
+      db-init:
+        condition: service_completed_successfully
+    restart: unless-stopped
 
   user-service:
     build:
