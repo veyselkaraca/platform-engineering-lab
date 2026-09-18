@@ -12,7 +12,7 @@ Feature docs: [docs/features/identity-keycloak](../../docs/features/identity-key
 | Client | `platform-lab-dev`: public, direct access grants (password grant), **dev/CI only** |
 | Audience | access tokens carry `aud: platform-api` (audience mapper on the client) |
 | Access token lifetime | 300 s |
-| Users (**fake**, dev only) | `dev-customer` / `dev-customer-fake-password`, sub `c0ffee00-0000-4000-8000-000000000001`, role `customer` · `dev-admin` / `dev-admin-fake-password`, sub `c0ffee00-0000-4000-8000-000000000002`, role `admin` |
+| Users (**fake**, dev only) | `dev-customer` / `dev-customer-fake-password`, sub `c0ffee00-0000-4000-8000-000000000001`, role `customer` · `dev-other` / `dev-other-fake-password`, sub `c0ffee00-0000-4000-8000-000000000003`, role `customer` (a second customer, used to prove ownership checks) · `dev-admin` / `dev-admin-fake-password`, sub `c0ffee00-0000-4000-8000-000000000002`, role `admin` |
 
 All credentials in this realm are fake and exist only for local/CI use. A test/prod realm is a separate file and must not contain test users or a direct-grant client.
 

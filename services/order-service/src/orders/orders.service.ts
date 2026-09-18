@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { Injectable, Logger, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
+import { ConflictException, Injectable, Logger, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
 import { isUniqueViolation } from '../common/pg-errors';
@@ -36,7 +36,7 @@ export class OrdersService {
   ): Promise<CreateResult> {
     if (idempotencyKey) {
       const existing = await this.findByKey(idempotencyKey);
-      if (existing) return { order: existing, created: false };
+      if (existing) return this.replay(existing, dto);
     }
 
     if (!(await this.users.exists(dto.userId, correlationId, authorization))) {
@@ -54,7 +54,7 @@ export class OrdersService {
       // A concurrent request with the same key won the race: return its order.
       if (idempotencyKey && isUniqueViolation(err)) {
         const existing = await this.findByKey(idempotencyKey);
-        if (existing) return { order: existing, created: false };
+        if (existing) return this.replay(existing, dto);
       }
       throw err;
     }
@@ -67,6 +67,13 @@ export class OrdersService {
     const order = await this.orders.findOneBy({ id });
     if (!order) throw new NotFoundException('Order not found');
     return order;
+  }
+
+  // Keys are global, so a replay must never hand one caller's order to another: a key used for a different
+  // user's order is a conflict, not a replay.
+  private replay(existing: Order, dto: CreateOrderDto): CreateResult {
+    if (existing.userId !== dto.userId) throw new ConflictException('Idempotency-Key was already used');
+    return { order: existing, created: false };
   }
 
   private async findByKey(key: string): Promise<Order | null> {

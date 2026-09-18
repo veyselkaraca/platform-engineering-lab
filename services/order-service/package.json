@@ -25,6 +25,7 @@
     "class-transformer": "^0.5.1",
     "class-validator": "^0.15.1",
     "ioredis": "^5.11.1",
+    "jose": "^5.10.0",
     "nestjs-pino": "^4",
     "pg": "^8.23.0",
     "pino": "^10.3.1",

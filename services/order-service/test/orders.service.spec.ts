@@ -1,4 +1,4 @@
-import { Logger, UnprocessableEntityException } from '@nestjs/common';
+import { ConflictException, Logger, UnprocessableEntityException } from '@nestjs/common';
 import { QueryFailedError } from 'typeorm';
 import { EventPublisher } from '../src/infra/event-publisher.service';
 import { IdempotencyKey } from '../src/orders/idempotency-key.entity';
@@ -79,6 +79,20 @@ describe('OrdersService', () => {
     expect(users.exists).not.toHaveBeenCalled();
     expect(dataSource.transaction).not.toHaveBeenCalled();
     expect(events.publish).not.toHaveBeenCalled();
+  });
+
+  it('never replays one user\'s order to another user who reuses the key', async () => {
+    const { service, keys, users, dataSource } = setup();
+    keys.findOneBy.mockResolvedValue({ key: 'key-1', orderId: 'o1' });
+    await expect(service.create({ ...dto, userId: 'someone-else' }, 'key-1', 'req-1')).rejects.toBeInstanceOf(ConflictException);
+    expect(users.exists).not.toHaveBeenCalled();
+    expect(dataSource.transaction).not.toHaveBeenCalled();
+  });
+
+  it('forwards the caller authorization to the user lookup', async () => {
+    const { service, users } = setup();
+    await service.create(dto, undefined, 'req-1', 'Bearer t');
+    expect(users.exists).toHaveBeenCalledWith('u1', 'req-1', 'Bearer t');
   });
 
   it('resolves a concurrent duplicate key to the winning order without publishing', async () => {

@@ -24,9 +24,11 @@ token_for() {
 }
 ADMIN_TOKEN=$(token_for dev-admin)
 [ -n "$ADMIN_TOKEN" ] || { echo "smoke FAILED: no token from Keycloak ($KEYCLOAK_URL); is the keycloak service up?" >&2; exit 1; }
-# Authenticated helpers (admin token).
-post() { curl -fsS -H 'content-type: application/json' -H "authorization: Bearer $ADMIN_TOKEN" "$@"; }
-get() { curl -fsS -H "authorization: Bearer $ADMIN_TOKEN" "$@"; }
+# Authenticated helpers: *_as takes the token first; post/get use the admin token.
+post_as() { t=$1; shift; curl -fsS -H 'content-type: application/json' -H "authorization: Bearer $t" "$@"; }
+get_as() { t=$1; shift; curl -fsS -H "authorization: Bearer $t" "$@"; }
+post() { post_as "$ADMIN_TOKEN" "$@"; }
+get() { get_as "$ADMIN_TOKEN" "$@"; }
 
 curl -fsS "$USER_URL/health/live" >/dev/null
 curl -fsS "$USER_URL/health/ready" >/dev/null
@@ -36,8 +38,10 @@ run="$(date +%s)-$$"
 # The realm's fixed dev users (security/keycloak/realm/platform-lab-dev.json): the token `sub` is the userId.
 CUSTOMER_ID=c0ffee00-0000-4000-8000-000000000001
 ADMIN_ID=c0ffee00-0000-4000-8000-000000000002
+OTHER_ID=c0ffee00-0000-4000-8000-000000000003
 CUSTOMER_TOKEN=$(token_for dev-customer)
-[ -n "$CUSTOMER_TOKEN" ] || { echo "smoke FAILED: no customer token from Keycloak" >&2; exit 1; }
+OTHER_TOKEN=$(token_for dev-other)
+[ -n "$CUSTOMER_TOKEN" ] && [ -n "$OTHER_TOKEN" ] || { echo "smoke FAILED: no customer tokens from Keycloak" >&2; exit 1; }
 user_id=$CUSTOMER_ID
 status() { curl -sS -o /dev/null -w '%{http_code}' "$@"; }
 expect() { [ "$1" = "$2" ] || { echo "smoke FAILED: $3: got $1, expected $2" >&2; exit 1; }; }
@@ -66,15 +70,22 @@ curl -fsS "$ORDER_URL/health/live" >/dev/null
 curl -fsS "$ORDER_URL/health/ready" >/dev/null
 
 order_body="{\"userId\":\"$user_id\",\"amount\":19.99,\"description\":\"smoke order\"}"
-first=$(post -H "Idempotency-Key: smoke-$run" -d "$order_body" "$ORDER_URL/v1/orders")
+first=$(post_as "$CUSTOMER_TOKEN" -H "Idempotency-Key: smoke-$run" -d "$order_body" "$ORDER_URL/v1/orders")
 order_id=$(printf '%s' "$first" | id_of)
 [ -n "$order_id" ] || { echo "smoke FAILED: no id in create-order response: $first" >&2; exit 1; }
 
 # Same key again must return the same order, not create a second one (FR-9).
-second=$(post -H "Idempotency-Key: smoke-$run" -d "$order_body" "$ORDER_URL/v1/orders")
+second=$(post_as "$CUSTOMER_TOKEN" -H "Idempotency-Key: smoke-$run" -d "$order_body" "$ORDER_URL/v1/orders")
 [ "$(printf '%s' "$second" | id_of)" = "$order_id" ] || { echo "smoke FAILED: idempotent replay returned a different order" >&2; exit 1; }
 
-get "$ORDER_URL/v1/orders/$order_id" >/dev/null
+get_as "$CUSTOMER_TOKEN" "$ORDER_URL/v1/orders/$order_id" >/dev/null
+
+# Authorization on orders: no token, ordering for someone else, reading someone else's order, replaying their key.
+expect "$(status -H 'content-type: application/json' -d "$order_body" "$ORDER_URL/v1/orders")" 401 "order-service without a token"
+expect "$(status -H 'content-type: application/json' -H "authorization: Bearer $CUSTOMER_TOKEN"   -d "{\"userId\":\"$OTHER_ID\",\"amount\":1,\"description\":\"x\"}" "$ORDER_URL/v1/orders")" 403 "customer ordering for another user"
+expect "$(status -H "authorization: Bearer $OTHER_TOKEN" "$ORDER_URL/v1/orders/$order_id")" 404 "another customer reading the order"
+expect "$(status -H 'content-type: application/json' -H "authorization: Bearer $OTHER_TOKEN" -H "Idempotency-Key: smoke-$run"   -d "{\"userId\":\"$OTHER_ID\",\"amount\":19.99,\"description\":\"smoke order\"}" "$ORDER_URL/v1/orders")" 409 "another customer replaying the idempotency key"
+expect "$(status -H "authorization: Bearer $ADMIN_TOKEN" "$ORDER_URL/v1/orders/$order_id")" 200 "admin reading the order"
 
 # An unknown user must be rejected (422), proving the user-service lookup is really in the path.
 expect "$(status -H 'content-type: application/json' -H "authorization: Bearer $ADMIN_TOKEN" \
@@ -91,7 +102,7 @@ curl -fsS "$WORKER_URL/health/ready" >/dev/null
 # The idempotent replay above must have produced exactly one event, hence exactly one notification.
 attempt=0
 while :; do
-  found=$(get "$WORKER_URL/v1/notifications?orderId=$order_id")
+  found=$(get_as "$CUSTOMER_TOKEN" "$WORKER_URL/v1/notifications?orderId=$order_id")
   [ "$found" != "[]" ] && break
   attempt=$((attempt + 1))
   [ "$attempt" -lt 30 ] || { echo "smoke FAILED: no notification for order $order_id after 30s" >&2; exit 1; }

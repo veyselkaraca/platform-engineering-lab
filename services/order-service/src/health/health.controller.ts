@@ -1,6 +1,9 @@
 import { Controller, Get } from '@nestjs/common';
+import { Public } from '../auth/auth.decorators';
 import { HealthCheck, HealthCheckService, TypeOrmHealthIndicator } from '@nestjs/terminus';
 
+// Probes are unauthenticated by design.
+@Public()
 @Controller('health')
 export class HealthController {
   constructor(

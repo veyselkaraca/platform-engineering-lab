@@ -1,4 +1,6 @@
-export interface Env {
+import { AuthEnv, validateAuthEnv } from '../auth/auth.config';
+
+export interface Env extends AuthEnv {
   PORT: number;
   LOG_LEVEL: string;
   DATABASE_URL: string;
@@ -32,5 +34,6 @@ export function validateEnv(raw: Record<string, unknown>): Env {
     USER_SERVICE_URL: required(raw, 'USER_SERVICE_URL').replace(/\/+$/, ''),
     USER_LOOKUP_TIMEOUT_MS: positiveInt(raw, 'USER_LOOKUP_TIMEOUT_MS', 2000),
     USER_CACHE_TTL_SECONDS: positiveInt(raw, 'USER_CACHE_TTL_SECONDS', 60),
+    ...validateAuthEnv(raw),
   };
 }
