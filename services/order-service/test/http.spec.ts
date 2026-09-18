@@ -38,7 +38,7 @@ describe('HTTP layer', () => {
   it('answers 200 when the idempotency key replays an existing order', async () => {
     orders.create.mockResolvedValue({ order: { id: 'o1', ...valid }, created: false });
     await post().set('Idempotency-Key', 'k1').send(valid).expect(200);
-    expect(orders.create).toHaveBeenCalledWith(expect.objectContaining(valid), 'k1', expect.any(String));
+    expect(orders.create).toHaveBeenCalledWith(expect.objectContaining(valid), 'k1', expect.any(String), undefined);
   });
 
   it.each([

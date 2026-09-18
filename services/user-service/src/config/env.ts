@@ -1,4 +1,6 @@
-export interface Env {
+import { AuthEnv, validateAuthEnv } from '../auth/auth.config';
+
+export interface Env extends AuthEnv {
   PORT: number;
   LOG_LEVEL: string;
   DATABASE_URL: string;
@@ -18,5 +20,6 @@ export function validateEnv(raw: Record<string, unknown>): Env {
     PORT: port,
     LOG_LEVEL: String(raw.LOG_LEVEL ?? 'info'),
     DATABASE_URL: databaseUrl,
+    ...validateAuthEnv(raw),
   };
 }

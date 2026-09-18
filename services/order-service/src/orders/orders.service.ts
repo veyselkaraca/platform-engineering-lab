@@ -28,13 +28,18 @@ export class OrdersService {
 
   // ponytail: a repeated Idempotency-Key returns the original order without comparing the payload;
   // reject mismatching payloads (422) if clients start reusing keys carelessly.
-  async create(dto: CreateOrderDto, idempotencyKey: string | undefined, correlationId: string): Promise<CreateResult> {
+  async create(
+    dto: CreateOrderDto,
+    idempotencyKey: string | undefined,
+    correlationId: string,
+    authorization?: string,
+  ): Promise<CreateResult> {
     if (idempotencyKey) {
       const existing = await this.findByKey(idempotencyKey);
       if (existing) return { order: existing, created: false };
     }
 
-    if (!(await this.users.exists(dto.userId, correlationId))) {
+    if (!(await this.users.exists(dto.userId, correlationId, authorization))) {
       throw new UnprocessableEntityException('User does not exist');
     }
 

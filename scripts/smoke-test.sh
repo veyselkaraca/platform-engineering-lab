@@ -32,10 +32,32 @@ curl -fsS "$USER_URL/health/live" >/dev/null
 curl -fsS "$USER_URL/health/ready" >/dev/null
 
 run="$(date +%s)-$$"
-created=$(post -d "{\"email\":\"smoke-$run@example.com\",\"name\":\"Smoke\"}" "$USER_URL/v1/users")
-user_id=$(printf '%s' "$created" | id_of)
-[ -n "$user_id" ] || { echo "smoke FAILED: no id in create-user response: $created" >&2; exit 1; }
+
+# The realm's fixed dev users (security/keycloak/realm/platform-lab-dev.json): the token `sub` is the userId.
+CUSTOMER_ID=c0ffee00-0000-4000-8000-000000000001
+ADMIN_ID=c0ffee00-0000-4000-8000-000000000002
+CUSTOMER_TOKEN=$(token_for dev-customer)
+[ -n "$CUSTOMER_TOKEN" ] || { echo "smoke FAILED: no customer token from Keycloak" >&2; exit 1; }
+user_id=$CUSTOMER_ID
+status() { curl -sS -o /dev/null -w '%{http_code}' "$@"; }
+expect() { [ "$1" = "$2" ] || { echo "smoke FAILED: $3: got $1, expected $2" >&2; exit 1; }; }
+
+# Users live in Keycloak; an admin registers the matching record. Re-runs answer 409, which is fine.
+code=$(status -X POST -H 'content-type: application/json' -H "authorization: Bearer $ADMIN_TOKEN" \
+  -d "{\"id\":\"$CUSTOMER_ID\",\"email\":\"dev-customer@example.invalid\",\"name\":\"Dev Customer\"}" "$USER_URL/v1/users")
+case "$code" in 201|409) ;; *) echo "smoke FAILED: registering the customer returned $code" >&2; exit 1 ;; esac
 get "$USER_URL/v1/users/$user_id" >/dev/null
+
+# Authentication and authorization (docs/features/identity-keycloak).
+expect "$(status "$USER_URL/v1/users/$user_id")" 401 "user-service without a token"
+sig=${CUSTOMER_TOKEN##*.}
+case "$sig" in A*) flip=B ;; *) flip=A ;; esac
+tampered="${CUSTOMER_TOKEN%.*}.$flip${sig#?}"
+expect "$(status -H "authorization: Bearer $tampered" "$USER_URL/v1/users/$user_id")" 401 "user-service with a tampered token"
+expect "$(status -H "authorization: Bearer $CUSTOMER_TOKEN" "$USER_URL/v1/users/$user_id")" 200 "customer reading themself"
+expect "$(status -H "authorization: Bearer $CUSTOMER_TOKEN" "$USER_URL/v1/users/$ADMIN_ID")" 403 "customer reading another user"
+expect "$(status -X POST -H 'content-type: application/json' -H "authorization: Bearer $CUSTOMER_TOKEN" \
+  -d "{\"id\":\"$ADMIN_ID\",\"email\":\"x@example.invalid\",\"name\":\"X\"}" "$USER_URL/v1/users")" 403 "customer creating a user"
 echo "smoke OK: user-service ($USER_URL)"
 
 [ -n "$ORDER_URL" ] || exit 0
@@ -55,9 +77,8 @@ second=$(post -H "Idempotency-Key: smoke-$run" -d "$order_body" "$ORDER_URL/v1/o
 get "$ORDER_URL/v1/orders/$order_id" >/dev/null
 
 # An unknown user must be rejected (422), proving the user-service lookup is really in the path.
-code=$(curl -sS -o /dev/null -w '%{http_code}' -H 'content-type: application/json' \
-  -d '{"userId":"00000000-0000-4000-8000-000000000000","amount":1,"description":"x"}' "$ORDER_URL/v1/orders")
-[ "$code" = "422" ] || { echo "smoke FAILED: unknown user returned $code, expected 422" >&2; exit 1; }
+expect "$(status -H 'content-type: application/json' -H "authorization: Bearer $ADMIN_TOKEN" \
+  -d '{"userId":"00000000-0000-4000-8000-000000000000","amount":1,"description":"x"}' "$ORDER_URL/v1/orders")" 422 "unknown user"
 
 echo "smoke OK: order-service ($ORDER_URL)"
 
@@ -91,8 +112,7 @@ echoed=$(curl -sS -D - -o /dev/null -H "authorization: Bearer $ADMIN_TOKEN" -H "
 [ "$echoed" = "smoke-gw-$run" ] || { echo "smoke FAILED: gateway did not echo x-request-id (got '$echoed')" >&2; exit 1; }
 
 # The whole flow through the single entry point: user -> order -> asynchronous notification.
-gw_user=$(post -d "{\"email\":\"smoke-gw-$run@example.com\",\"name\":\"Smoke GW\"}" "$GATEWAY_URL/v1/users" | id_of)
-[ -n "$gw_user" ] || { echo "smoke FAILED: no user id through the gateway" >&2; exit 1; }
+gw_user=$CUSTOMER_ID
 gw_order=$(post -H "Idempotency-Key: smoke-gw-$run" \
   -d "{\"userId\":\"$gw_user\",\"amount\":5,\"description\":\"smoke via gateway\"}" "$GATEWAY_URL/v1/orders" | id_of)
 [ -n "$gw_order" ] || { echo "smoke FAILED: no order id through the gateway" >&2; exit 1; }

@@ -12,13 +12,14 @@ export class OrdersController {
   async create(
     @Body() dto: CreateOrderDto,
     @Headers('idempotency-key') idempotencyKey: string | undefined,
+    @Headers('authorization') authorization: string | undefined,
     @Req() req: Request & { id?: string | number },
     @Res({ passthrough: true }) res: Response,
   ) {
     if (idempotencyKey !== undefined && (idempotencyKey === '' || idempotencyKey.length > 200)) {
       throw new BadRequestException('Idempotency-Key must be 1-200 characters');
     }
-    const { order, created } = await this.orders.create(dto, idempotencyKey, String(req.id));
+    const { order, created } = await this.orders.create(dto, idempotencyKey, String(req.id), authorization);
     res.status(created ? 201 : 200);
     return order;
   }

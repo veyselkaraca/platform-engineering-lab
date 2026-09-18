@@ -46,6 +46,24 @@ describe('UserDirectory', () => {
     expect(fetchMock.mock.calls[0][1].headers).toEqual({ 'x-request-id': 'req-42' });
   });
 
+  it('forwards the caller authorization header so user-service can authorize the lookup', async () => {
+    fetchMock.mockResolvedValue(respond(200));
+    await setup().directory.exists('u1', 'req-42', 'Bearer caller-token');
+    expect(fetchMock.mock.calls[0][1].headers).toEqual({ 'x-request-id': 'req-42', authorization: 'Bearer caller-token' });
+  });
+
+  it('never logs the forwarded authorization header, even when the lookup fails', async () => {
+    fetchMock.mockResolvedValue(respond(500));
+    const error = jest.spyOn(Logger.prototype, 'error').mockImplementation();
+    await expect(setup().directory.exists('u1', 'req-1', 'Bearer caller-token')).rejects.toBeInstanceOf(ServiceUnavailableException);
+    expect(error.mock.calls.flat().join(' ')).not.toContain('caller-token');
+  });
+
+  it('treats a forbidden lookup (403) as a failure, not as "user missing"', async () => {
+    fetchMock.mockResolvedValue(respond(403));
+    await expect(setup().directory.exists('u1', 'req-1', 'Bearer other')).rejects.toBeInstanceOf(ServiceUnavailableException);
+  });
+
   it('returns false for an unknown user and does not cache it', async () => {
     fetchMock.mockResolvedValue(respond(404));
     const { directory, cache } = setup();

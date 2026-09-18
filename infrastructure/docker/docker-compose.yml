@@ -5,6 +5,13 @@ x-postgres-auth: &postgres-auth
   POSTGRES_USER: ${POSTGRES_USER:?set in .env}
   POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set in .env}
 
+x-auth-env: &auth-env
+  # Token verification (docs/features/identity-keycloak). `iss` is what clients see (KC_HOSTNAME); keys are fetched
+  # over the compose network. Public keys only: no secret is involved.
+  AUTH_ISSUER: http://localhost:${KEYCLOAK_HOST_PORT:-8081}/realms/platform-lab
+  AUTH_AUDIENCE: platform-api
+  AUTH_JWKS_URL: http://keycloak:8080/realms/platform-lab/protocol/openid-connect/certs
+
 services:
   postgres:
     image: postgres:17-alpine
@@ -132,6 +139,7 @@ services:
       PORT: 3000
       LOG_LEVEL: ${LOG_LEVEL:-info}
       DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/user_service
+      <<: *auth-env
     ports:
       - "127.0.0.1:${USER_SERVICE_HOST_PORT:-3001}:3000"
     depends_on:

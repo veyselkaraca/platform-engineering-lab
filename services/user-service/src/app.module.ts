@@ -4,6 +4,7 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TerminusModule } from '@nestjs/terminus';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { LoggerModule } from 'nestjs-pino';
+import { AuthModule } from './auth/auth.module';
 import { Env, validateEnv } from './config/env';
 import { HealthController } from './health/health.controller';
 import { CreateUsers1700000000000 } from './migrations/1700000000000-create-users';
@@ -46,6 +47,7 @@ import { UsersModule } from './users/users.module';
       }),
     }),
     TerminusModule,
+    AuthModule,
     UsersModule,
   ],
   controllers: [HealthController],

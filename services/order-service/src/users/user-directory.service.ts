@@ -15,22 +15,26 @@ export class UserDirectory {
     private readonly config: ConfigService<Env, true>,
   ) {}
 
-  async exists(userId: string, requestId: string): Promise<boolean> {
+  // `authorization` is the caller's own bearer header: user-service authorizes the lookup for the caller
+  // (self or admin), so no service-to-service credential is needed. It is forwarded, never logged or cached.
+  async exists(userId: string, requestId: string, authorization?: string): Promise<boolean> {
     const key = `user:${userId}`;
     if (await this.cache.get(key)) return true;
-    const found = await this.fetchExists(userId, requestId);
+    const found = await this.fetchExists(userId, requestId, authorization);
     // Only positive answers are cached: a user created a moment later must not stay "missing" for the TTL.
     if (found) await this.cache.set(key, '1', this.config.get('USER_CACHE_TTL_SECONDS'));
     return found;
   }
 
-  private async fetchExists(userId: string, requestId: string): Promise<boolean> {
+  private async fetchExists(userId: string, requestId: string, authorization?: string): Promise<boolean> {
     const url = `${this.config.get('USER_SERVICE_URL')}/v1/users/${userId}`;
     const timeoutMs = this.config.get('USER_LOOKUP_TIMEOUT_MS');
+    const headers: Record<string, string> = { 'x-request-id': requestId };
+    if (authorization) headers.authorization = authorization;
     let cause = 'unknown';
     for (let attempt = 1; attempt <= ATTEMPTS; attempt++) {
       try {
-        const res = await fetch(url, { headers: { 'x-request-id': requestId }, signal: AbortSignal.timeout(timeoutMs) });
+        const res = await fetch(url, { headers, signal: AbortSignal.timeout(timeoutMs) });
         void res.body?.cancel(); // release the connection; the body is not needed
         if (res.status === 200) return true;
         if (res.status === 404) return false;
