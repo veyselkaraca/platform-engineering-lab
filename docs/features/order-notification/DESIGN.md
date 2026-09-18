@@ -36,7 +36,7 @@ exchange orders (topic, durable)
                     notification.order-created.dlq
 ```
 
-The attempt count travels in a message header. The worker uses a bounded prefetch for backpressure (§17). Definitions live in `messaging/rabbitmq/definitions/` and are imported declaratively (locally by the `rabbitmq-init` service; see `messaging/rabbitmq/README.md`).
+Attempts are counted from RabbitMQ's own `x-death` header (rejections from the main queue), so the count survives worker restarts. A malformed message is dead-lettered immediately (retrying cannot help); a transient failure is retried up to `MAX_ATTEMPTS`, then dead-lettered with `x-failure-reason` and `x-failed-attempts` headers. The worker uses a bounded prefetch for backpressure (§17). Dead-lettered messages are recovered with `scripts/replay-dlq.sh` (see `docs/operations/runbooks/notification-dlq.md`). Definitions live in `messaging/rabbitmq/definitions/` and are imported declaratively (locally by the `rabbitmq-init` service; see `messaging/rabbitmq/README.md`).
 
 ## Cache
 

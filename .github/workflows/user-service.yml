@@ -6,6 +6,7 @@ on:
     paths:
       - "services/user-service/**"
       - "infrastructure/docker/**"
+      - "messaging/rabbitmq/**"
       - "scripts/**"
       - ".github/workflows/user-service.yml"
       - ".github/workflows/_service.yml"
@@ -13,6 +14,7 @@ on:
     paths:
       - "services/user-service/**"
       - "infrastructure/docker/**"
+      - "messaging/rabbitmq/**"
       - "scripts/**"
       - ".github/workflows/user-service.yml"
       - ".github/workflows/_service.yml"

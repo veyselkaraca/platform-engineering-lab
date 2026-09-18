@@ -10,7 +10,7 @@ on:
         required: true
         type: string
       smoke-deps:
-        description: Space-separated compose services to build locally because the smoke test needs them
+        description: Space-separated compose services the smoke test needs; built from source and started next to the service under test
         required: false
         type: string
         default: ""
@@ -106,7 +106,8 @@ jobs:
           export "$var=$IMAGE:${{ github.sha }}"
           # shellcheck disable=SC2086
           if [ -n "$SMOKE_DEPS" ]; then docker compose build $SMOKE_DEPS; fi
-          docker compose up -d --no-build --wait "$SERVICE"
+          # shellcheck disable=SC2086
+          docker compose up -d --no-build --wait "$SERVICE" $SMOKE_DEPS
           cd ../..
           # shellcheck disable=SC2086
           sh scripts/smoke-test.sh $SMOKE_URLS

@@ -11,7 +11,10 @@
       "sourceMaps": true,
       "localRoot": "${workspaceFolder}/services/user-service",
       "remoteRoot": "/app",
-      "skipFiles": ["<node_internals>/**", "**/node_modules/**"]
+      "skipFiles": [
+        "<node_internals>/**",
+        "**/node_modules/**"
+      ]
     },
     {
       "name": "order-service: attach (docker)",
@@ -23,7 +26,25 @@
       "sourceMaps": true,
       "localRoot": "${workspaceFolder}/services/order-service",
       "remoteRoot": "/app",
-      "skipFiles": ["<node_internals>/**", "**/node_modules/**"]
+      "skipFiles": [
+        "<node_internals>/**",
+        "**/node_modules/**"
+      ]
+    },
+    {
+      "name": "notification-worker: attach (docker)",
+      "type": "node",
+      "request": "attach",
+      "address": "localhost",
+      "port": 9231,
+      "restart": true,
+      "sourceMaps": true,
+      "localRoot": "${workspaceFolder}/services/notification-worker",
+      "remoteRoot": "/app",
+      "skipFiles": [
+        "<node_internals>/**",
+        "**/node_modules/**"
+      ]
     }
   ]
 }

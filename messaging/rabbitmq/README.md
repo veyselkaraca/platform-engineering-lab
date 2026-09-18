@@ -13,7 +13,8 @@ orders (topic) --order.created--> notification.order-created
                                                                   v
                                                             orders.requeue (direct) --> notification.order-created
 
-after MAX attempts the consumer publishes to notification.order-created.dlq (manual recovery)
+after MAX attempts (or for a malformed message) the consumer publishes to notification.order-created.dlq
+recovery: scripts/replay-dlq.sh moves the DLQ back to the main queue (see the DLQ runbook)
 ```
 
 | Object | Purpose |
@@ -23,6 +24,8 @@ after MAX attempts the consumer publishes to notification.order-created.dlq (man
 | `...retry` | Delay buffer: messages wait 10s, then return to the main queue. |
 | `...dlq` | Poison messages after bounded retries; alert on depth > 0. |
 
-Attempt counting and the move to the DLQ are the consumer's responsibility (notification-worker, next slice). Unroutable publishes are not flagged today; the publisher does not use `mandatory`.
+Attempt counting (from the `x-death` header) and the move to the DLQ are the consumer's responsibility (notification-worker). Unroutable publishes are not flagged today; the publisher does not use `mandatory`.
+
+`enabled_plugins` adds `rabbitmq_shovel` (and its management plugin) on top of the image defaults; the replay script uses a one-off dynamic shovel because it is the loss-safe way to move messages between queues.
 
 Failure/rollback: removing an object is a definitions change plus a broker restart with an empty data volume in dev; in shared environments delete the queue only after it is empty.

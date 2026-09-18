@@ -1,22 +1,22 @@
-name: order-service
+name: notification-worker
 
 on:
   push:
     branches: [main]
     paths:
-      - "services/order-service/**"
+      - "services/notification-worker/**"
       - "infrastructure/docker/**"
       - "messaging/rabbitmq/**"
       - "scripts/**"
-      - ".github/workflows/order-service.yml"
+      - ".github/workflows/notification-worker.yml"
       - ".github/workflows/_service.yml"
   pull_request:
     paths:
-      - "services/order-service/**"
+      - "services/notification-worker/**"
       - "infrastructure/docker/**"
       - "messaging/rabbitmq/**"
       - "scripts/**"
-      - ".github/workflows/order-service.yml"
+      - ".github/workflows/notification-worker.yml"
       - ".github/workflows/_service.yml"
   workflow_dispatch:
 
@@ -24,7 +24,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: order-service-${{ github.ref }}
+  group: notification-worker-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -35,7 +35,7 @@ jobs:
       packages: write
       security-events: write
     with:
-      service: order-service
-      # The smoke test follows the order through user-service and on to the worker; build those from source.
-      smoke-deps: user-service notification-worker
+      service: notification-worker
+      # The worker is exercised end to end: an order created via order-service must arrive as a notification.
+      smoke-deps: user-service order-service
       smoke-urls: http://localhost:3001 http://localhost:3002 http://localhost:3003

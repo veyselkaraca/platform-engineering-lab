@@ -27,7 +27,7 @@ services:
       PGHOST: postgres
       PGUSER: ${POSTGRES_USER}
       PGPASSWORD: ${POSTGRES_PASSWORD}
-      POSTGRES_MULTIPLE_DATABASES: user_service,order_service
+      POSTGRES_MULTIPLE_DATABASES: user_service,order_service,notification_worker
     volumes:
       - ./config/postgres/init-databases.sh:/init-databases.sh:ro
     entrypoint: ["sh", "/init-databases.sh"]
@@ -52,6 +52,8 @@ services:
       RABBITMQ_DEFAULT_PASS: ${RABBITMQ_DEFAULT_PASS:?set in .env}
     volumes:
       - rabbitmq-data:/var/lib/rabbitmq
+      # Adds the shovel plugin used by scripts/replay-dlq.sh.
+      - ../../messaging/rabbitmq/enabled_plugins:/etc/rabbitmq/enabled_plugins:ro
     ports:
       - "127.0.0.1:${RABBITMQ_MANAGEMENT_HOST_PORT:-15672}:15672"
     healthcheck:
@@ -127,6 +129,30 @@ services:
         condition: service_completed_successfully
       user-service:
         condition: service_started
+    restart: unless-stopped
+
+  notification-worker:
+    build:
+      context: ../../services/notification-worker
+      target: runtime
+      args:
+        GIT_SHA: ${GIT_SHA:-local}
+    image: ${NOTIFICATION_WORKER_IMAGE:-notification-worker:${GIT_SHA:-local}}
+    environment:
+      PORT: 3000
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/notification_worker
+      RABBITMQ_URL: amqp://${RABBITMQ_DEFAULT_USER}:${RABBITMQ_DEFAULT_PASS}@rabbitmq:5672
+      WORKER_PREFETCH: 10
+      MAX_ATTEMPTS: 3
+    ports:
+      - "127.0.0.1:${NOTIFICATION_WORKER_HOST_PORT:-3003}:3000"
+    # The topology (queues) must exist before the worker consumes; the worker also retries if it does not.
+    depends_on:
+      db-init:
+        condition: service_completed_successfully
+      rabbitmq-init:
+        condition: service_completed_successfully
     restart: unless-stopped
 
 volumes:
