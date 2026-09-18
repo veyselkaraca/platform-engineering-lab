@@ -1,0 +1,19 @@
+# Dev overlay: docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
+# Runs the service on the image's Node version with watch mode and a debugger on 9229.
+# Attach with the "user-service: attach (docker)" config in .vscode/launch.json.
+services:
+  user-service:
+    build:
+      target: dev
+    image: user-service:dev
+    environment:
+      LOG_LEVEL: ${LOG_LEVEL:-debug}
+      # Bind mounts on Windows/macOS don't emit fs events; poll instead.
+      TSC_WATCHFILE: PriorityPollingInterval
+      TSC_WATCHDIRECTORY: RecursiveDirectoryUsingDynamicPriorityPolling
+    ports:
+      - "127.0.0.1:9229:9229"
+    volumes:
+      - ../../services/user-service:/app
+      - /app/node_modules
+    command: ["npm", "run", "start:debug"]

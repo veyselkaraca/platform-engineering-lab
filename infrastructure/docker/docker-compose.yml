@@ -1,0 +1,41 @@
+# Local runtime. Copy .env.example to .env first (scripts/bootstrap.sh does this).
+name: platform-lab
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?set in .env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set in .env}
+      # One database per service (ADR-001); add a name when a service is added.
+      POSTGRES_MULTIPLE_DATABASES: user_service
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./config/postgres/init-databases.sh:/docker-entrypoint-initdb.d/init-databases.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d postgres"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  user-service:
+    build:
+      context: ../../services/user-service
+      target: runtime
+      args:
+        GIT_SHA: ${GIT_SHA:-local}
+    image: user-service:${GIT_SHA:-local}
+    environment:
+      PORT: 3000
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/user_service
+    ports:
+      - "127.0.0.1:${USER_SERVICE_HOST_PORT:-3001}:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  postgres-data:
