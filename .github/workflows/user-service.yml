@@ -1,0 +1,124 @@
+name: user-service
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "services/user-service/**"
+      - "scripts/smoke-test.sh"
+      - ".github/workflows/user-service.yml"
+  pull_request:
+    paths:
+      - "services/user-service/**"
+      - "scripts/smoke-test.sh"
+      - ".github/workflows/user-service.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: user-service-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Validate + Test + Analyze (lint) + dependency scan
+  verify:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: services/user-service
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: services/user-service/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - run: npm test
+      - run: npm run build
+      # Dependency scan gate: fails on high/critical advisories.
+      - run: npm audit --audit-level=high
+
+  # SAST
+  codeql:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: github/codeql-action/init@v3
+        with:
+          languages: javascript-typescript
+          build-mode: none
+      - uses: github/codeql-action/analyze@v3
+
+  # Build once -> scan -> smoke test -> publish the SAME image (never rebuilt).
+  image:
+    needs: [verify, codeql]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    env:
+      SERVICE: user-service
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Compute image name (GHCR requires lowercase)
+        run: echo "IMAGE=ghcr.io/${GITHUB_REPOSITORY,,}/${SERVICE}" >> "$GITHUB_ENV"
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build image (tag = commit SHA)
+        uses: docker/build-push-action@v6
+        with:
+          context: services/user-service
+          target: runtime
+          build-args: GIT_SHA=${{ github.sha }}
+          tags: ${{ env.IMAGE }}:${{ github.sha }}
+          load: true
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # Image scan gate: fails on fixable high/critical vulnerabilities.
+      - name: Scan image
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: ${{ env.IMAGE }}:${{ github.sha }}
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"
+
+      # Verify the built artifact against a real database before it is published.
+      - name: Smoke test image
+        run: |
+          docker network create smoke
+          docker run -d --name pg --network smoke \
+            -e POSTGRES_USER=ci -e POSTGRES_PASSWORD=ci-throwaway -e POSTGRES_DB=user_service \
+            postgres:17-alpine
+          until docker exec pg pg_isready -U ci -d user_service >/dev/null 2>&1; do sleep 1; done
+          docker run -d --name svc --network smoke -p 3001:3000 \
+            -e DATABASE_URL=postgres://ci:ci-throwaway@pg:5432/user_service \
+            "$IMAGE:${{ github.sha }}"
+          curl -fsS --retry 30 --retry-delay 2 --retry-all-errors http://localhost:3001/health/ready >/dev/null
+          sh scripts/smoke-test.sh http://localhost:3001
+
+      - name: Dump service logs on failure
+        if: failure()
+        run: docker logs svc || true
+
+      - name: Log in to GHCR
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publish
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: docker push "$IMAGE:${{ github.sha }}"
