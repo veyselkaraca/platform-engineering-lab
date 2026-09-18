@@ -1,0 +1,28 @@
+# Dependencies / build output
+node_modules/
+dist/
+build/
+coverage/
+*.tsbuildinfo
+
+# Secrets (AGENTS.md §24: never commit) — only *.example files are allowed
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+infrastructure/kubernetes/secrets/*
+!infrastructure/kubernetes/secrets/*.example.yaml
+!infrastructure/kubernetes/secrets/.gitkeep
+infrastructure/ansible/**/vault-pass*
+*.retry
+
+# Local / OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/launch.json
+*.log
