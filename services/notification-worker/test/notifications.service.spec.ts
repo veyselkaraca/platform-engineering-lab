@@ -31,6 +31,15 @@ describe('NotificationsService', () => {
     expect(Logger.prototype.log).toHaveBeenCalledWith(expect.stringContaining('notification.duplicate_ignored'));
   });
 
+  it('scopes the order lookup to one user when a user id is given, and to none for admins', async () => {
+    const { service, dataSource } = setup([]);
+    await service.findByOrder(ID, 'user-1');
+    await service.findByOrder(ID);
+    expect(dataSource.query.mock.calls[0][1]).toEqual([ID, 'user-1']);
+    expect(dataSource.query.mock.calls[1][1]).toEqual([ID, null]);
+    expect(dataSource.query.mock.calls[0][0]).toContain('user_id = $2');
+  });
+
   it('propagates database errors so the message is retried', async () => {
     const { service, dataSource } = setup([]);
     dataSource.query.mockRejectedValue(new Error('connection lost'));

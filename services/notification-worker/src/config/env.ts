@@ -1,4 +1,6 @@
-export interface Env {
+import { AuthEnv, validateAuthEnv } from '../auth/auth.config';
+
+export interface Env extends AuthEnv {
   PORT: number;
   LOG_LEVEL: string;
   DATABASE_URL: string;
@@ -30,5 +32,6 @@ export function validateEnv(raw: Record<string, unknown>): Env {
     WORKER_PREFETCH: positiveInt(raw, 'WORKER_PREFETCH', 10, 1000),
     // Total processing attempts before a message is dead-lettered.
     MAX_ATTEMPTS: positiveInt(raw, 'MAX_ATTEMPTS', 3, 100),
+    ...validateAuthEnv(raw),
   };
 }

@@ -111,6 +111,11 @@ done
 count=$(printf '%s' "$found" | grep -o '"eventId"' | wc -l | tr -d ' ')
 [ "$count" = "1" ] || { echo "smoke FAILED: expected 1 notification for order $order_id, found $count" >&2; exit 1; }
 
+# Authorization on notifications: no token is refused; another customer sees nothing for this order, an admin sees it.
+expect "$(status "$WORKER_URL/v1/notifications?orderId=$order_id")" 401 "notification-worker without a token"
+[ "$(get_as "$OTHER_TOKEN" "$WORKER_URL/v1/notifications?orderId=$order_id")" = "[]" ] || { echo "smoke FAILED: another customer can see the notification" >&2; exit 1; }
+[ "$(get "$WORKER_URL/v1/notifications?orderId=$order_id" | grep -o '"eventId"' | wc -l | tr -d ' ')" = "1" ] || { echo "smoke FAILED: admin cannot see the notification" >&2; exit 1; }
+
 echo "smoke OK: notification-worker ($WORKER_URL)"
 
 [ -n "$GATEWAY_URL" ] || exit 0

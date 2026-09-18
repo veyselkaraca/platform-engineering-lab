@@ -32,11 +32,13 @@ export class NotificationsService {
     return true;
   }
 
-  findByOrder(orderId: string): Promise<Notification[]> {
+  // With `userId` only that user's notifications are returned, so a customer asking about someone else's order
+  // gets the same empty list as for an order without notifications (no disclosure).
+  findByOrder(orderId: string, userId?: string): Promise<Notification[]> {
     return this.dataSource.query(
       `SELECT id, event_id AS "eventId", order_id AS "orderId", user_id AS "userId", created_at AS "createdAt"
-       FROM notifications WHERE order_id = $1 ORDER BY created_at`,
-      [orderId],
+       FROM notifications WHERE order_id = $1 AND ($2::uuid IS NULL OR user_id = $2::uuid) ORDER BY created_at`,
+      [orderId, userId ?? null],
     );
   }
 }

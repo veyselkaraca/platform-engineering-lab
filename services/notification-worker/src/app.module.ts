@@ -4,6 +4,7 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TerminusModule } from '@nestjs/terminus';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { LoggerModule } from 'nestjs-pino';
+import { AuthModule } from './auth/auth.module';
 import { Env, validateEnv } from './config/env';
 import { HealthController } from './health/health.controller';
 import { ConsumerService } from './messaging/consumer.service';
@@ -43,6 +44,7 @@ import { NotificationsService } from './notifications/notifications.service';
       }),
     }),
     TerminusModule,
+    AuthModule,
   ],
   controllers: [HealthController, NotificationsController],
   providers: [NotificationsService, ConsumerService],

@@ -1,14 +1,17 @@
 import { Controller, Get, ParseUUIDPipe, Query } from '@nestjs/common';
+import { CurrentPrincipal, isAdmin, Roles } from '../auth/auth.decorators';
+import { Principal } from '../auth/token-verifier';
 import { NotificationsService } from './notifications.service';
 
-// Read-only lookup used by operators and the smoke/e2e checks to confirm an event was processed.
-// AuthN/AuthZ arrives with the Keycloak slice.
+// Read-only lookup used by clients and the smoke/e2e checks to confirm an event was processed.
+// A customer sees only their own notifications; an admin sees all.
 @Controller('v1/notifications')
 export class NotificationsController {
   constructor(private readonly notifications: NotificationsService) {}
 
   @Get()
-  byOrder(@Query('orderId', new ParseUUIDPipe()) orderId: string) {
-    return this.notifications.findByOrder(orderId);
+  @Roles('customer', 'admin')
+  byOrder(@Query('orderId', new ParseUUIDPipe()) orderId: string, @CurrentPrincipal() principal: Principal) {
+    return this.notifications.findByOrder(orderId, isAdmin(principal) ? undefined : principal.sub);
   }
 }
