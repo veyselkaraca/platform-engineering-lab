@@ -59,6 +59,14 @@ processors:
       - { key: telemetry.sdk.name, action: delete }
       - { key: telemetry.sdk.version, action: delete }
 
+  # A successful probe carries http.status_code, a failed one does not: two series per target. After a recovery the old
+  # 0 series would live on for metric_expiration and make `min` (ServiceNotReady) report a ready service as not ready.
+  transform/httpcheck:
+    metric_statements:
+      - context: datapoint
+        statements:
+          - delete_key(attributes, "http.status_code") where metric.name == "httpcheck.status"
+
   # OB-11 defence in depth: even if an instrumentation ever recorded these, they never leave the Collector.
   attributes/redact:
     actions:
@@ -107,7 +115,7 @@ service:
       exporters: [otlp_grpc/tempo]
     metrics:
       receivers: [otlp, http_check]
-      processors: [memory_limiter, resource/metrics, batch]
+      processors: [memory_limiter, resource/metrics, transform/httpcheck, batch]
       exporters: [prometheus]
     logs:
       receivers: [otlp]
