@@ -50,8 +50,8 @@ jobs:
       - name: Keycloak outage behavior
         run: sh tests/chaos/keycloak-outage.sh
 
-      - name: Broker and database failure behavior
-        run: node --test --test-concurrency=1 tests/chaos/broker-failures.chaos.mjs
+      - name: Broker, database, Redis and user-service failure behavior
+        run: node --test --test-concurrency=1 tests/chaos/broker-failures.chaos.mjs tests/chaos/dependency-failures.chaos.mjs
 
       - name: Dump compose logs on failure
         if: failure()

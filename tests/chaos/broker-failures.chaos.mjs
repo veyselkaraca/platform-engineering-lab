@@ -8,16 +8,10 @@ import { execFileSync, spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { after, before, describe, it } from 'node:test';
 import { DLQ, MAIN_QUEUE, orderCreatedEvent, peek, publishEvent, queueInfo, repoRoot, takeMatching } from '../support/broker.mjs';
+import { COMPOSE, docker, logsSince, psql, sleep, status } from '../support/compose.mjs';
 import { call, eventually, IDS, registerUser, tokens, URLS } from '../support/stack.mjs';
 
-const COMPOSE = ['compose', '-f', 'infrastructure/docker/docker-compose.yml'];
-const docker = (...args) => execFileSync('docker', [...COMPOSE, ...args], { cwd: repoRoot, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-const status = (url) => fetch(url, { signal: AbortSignal.timeout(3000) }).then((r) => r.status, () => 0);
-
-// Runs a query in the worker's database; the credentials stay inside the container.
-const sql = (query) =>
-  docker('exec', '-T', 'postgres', 'sh', '-c', 'psql -U "$POSTGRES_USER" -d notification_worker -tA -c "$1"', '_', query).trim();
+const sql = (query) => psql('notification_worker', query);
 const notificationCount = (eventId) => Number(sql(`SELECT count(*) FROM notifications WHERE event_id = '${eventId}'`));
 
 const workerReady = () => status(`${URLS.worker}/health/ready`).then((s) => s === 200);
@@ -58,7 +52,7 @@ describe('async path under failure', { concurrency: false }, () => {
     await waitPostgres();
 
     await eventually(() => notificationCount(event.eventId) === 1, { timeoutMs: 90_000, intervalMs: 1000 });
-    assert.match(docker('logs', '--no-log-prefix', '--since', since, 'notification-worker'), new RegExp(`notification\\.retry messageId=${event.eventId} attempt=1/3`));
+    assert.match(logsSince('notification-worker', since), new RegExp(`notification\\.retry messageId=${event.eventId} attempt=1/3`));
     assert.equal((await peek(DLQ)).some((m) => m.properties.message_id === event.eventId), false, 'a recovered message must not be dead-lettered');
   });
 
@@ -157,7 +151,7 @@ describe('async path under failure', { concurrency: false }, () => {
     const since = new Date().toISOString();
     const lost = await place();
     assert.equal(lost.status, 201, 'the order is committed before publishing (ADR-001), so a broker outage must not fail it');
-    assert.match(docker('logs', '--no-log-prefix', '--since', since, 'order-service'), new RegExp(`order\.publish_failed orderId=${lost.body.id}`));
+    assert.match(logsSince('order-service', since), new RegExp(`order\.publish_failed orderId=${lost.body.id}`));
 
     docker('start', 'rabbitmq');
     await waitBroker();
