@@ -1,6 +1,6 @@
 # Architecture Overview
 
-The charter is [AGENTS.md](../../AGENTS.md); concrete choices are in [ADR-001](../decisions/ADR-001-stack-and-service-responsibilities.md). This page describes the platform as intended; components are marked as implemented only when their code lands.
+The rules are in [engineering-standards.md](engineering-standards.md); concrete choices are in [ADR-001](../decisions/ADR-001-stack-and-service-responsibilities.md). This page describes the platform as intended; components are marked as implemented only when their code lands.
 
 ## Request flow (first feature)
 
@@ -21,7 +21,7 @@ Keycloak issues tokens; OpenTelemetry collector receives logs/metrics/traces fro
 
 Sync (HTTP) and async (RabbitMQ) paths are kept distinct on purpose: the sync path returns to the client; the async path is best-effort-with-recovery and never blocks the response.
 
-## Component contract (AGENTS.md §26)
+## Component contract
 
 | Component | Why it exists | Depends on | On failure |
 |---|---|---|---|
@@ -36,9 +36,9 @@ Sync (HTTP) and async (RabbitMQ) paths are kept distinct on purpose: the sync pa
 | RabbitMQ | Async events | — | Publish/consume degrade; queue depth is alerted |
 | Keycloak | Central identity (realm `platform-lab`, see `security/keycloak/README.md`) | PostgreSQL (its own database) | New logins fail; already-issued tokens keep validating while a service's key cache is warm (default 1 h); after that, and on a cold start, protected endpoints answer 503 (fail closed) while health stays green. Runbook: `docs/operations/runbooks/keycloak-outage.md` |
 
-Uniform for every component (stated once, verified per component in its README): observed through OpenTelemetry logs/metrics/traces and health endpoints; deployed by a Helm release built from an immutable `<service>:<commit-sha>` image; rolled back by redeploying the previous known-good image and config (AGENTS.md §15).
+Uniform for every component (stated once, verified per component in its README): observed through OpenTelemetry logs/metrics/traces and health endpoints; deployed by a Helm release built from an immutable `<service>:<commit-sha>` image; rolled back by redeploying the previous known-good image and config ([rollback](engineering-standards.md#ci-cd-and-rollback)).
 
 ## Related docs
 
 - Feature: [order-notification](../features/order-notification/REQUIREMENTS.md)
-- Charter §8 (reference diagram), §14 (Kubernetes), §16 (observability)
+- [Engineering standards](engineering-standards.md): Kubernetes, observability, reliability

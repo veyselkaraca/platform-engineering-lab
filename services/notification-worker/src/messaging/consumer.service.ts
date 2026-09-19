@@ -23,7 +23,7 @@ export function failedAttempts(msg: ConsumeMessage): number {
     .reduce((sum: number, d: { count?: unknown }) => sum + Number(d.count ?? 0), 0);
 }
 
-// Consumes order.created. Failure handling (AGENTS.md section 17):
+// Consumes order.created. Failure handling (engineering standards: Reliability):
 //   malformed message      -> DLQ immediately (retrying cannot help)
 //   transient failure      -> nack -> retry queue (TTL) -> main queue, up to MAX_ATTEMPTS, then DLQ
 // The worker survives broker outages: it reconnects with capped backoff and reports not-ready meanwhile.

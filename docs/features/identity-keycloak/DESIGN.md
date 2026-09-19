@@ -119,7 +119,7 @@ The user lookup must pass user-service's own authorization, and service-to-servi
 3. order-service: `src/auth/`, role and ownership checks.
 4. notification-worker: module, owner filter.
 5. api-gateway: middleware; smoke gateway section, CI `smoke-deps`.
-6. Docs: update `order-notification` docs where they now differ, the runbook, CLAUDE.md "Current state". *(done; slices 2 to 5 are done as well)*
+6. Docs: update `order-notification` docs where they now differ, the runbook, the README. *(done; slices 2 to 5 are done as well)*
 
 Each slice keeps the stack green: the smoke script sends tokens from slice 2 on (harmless to services that do not enforce yet), and the gateway (slice 5) goes last so services are protected before the front door demands tokens. Order of deployment is otherwise free: the gateway forwards `Authorization`, so mixed versions during a rolling update still behave.
 

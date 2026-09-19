@@ -42,7 +42,7 @@ import { NotificationsService } from './notifications/notifications.service';
         entities: [],
         migrations: [CreateNotifications1700000000000],
         migrationsRun: true,
-        // A database that does not answer must fail the request, not hang it (AGENTS.md section 17).
+        // A database that does not answer must fail the request, not hang it (engineering standards: Reliability).
         connectTimeoutMS: 2000,
         retryAttempts: 5,
         retryDelay: 2000,

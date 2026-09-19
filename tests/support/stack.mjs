@@ -1,5 +1,5 @@
 // Helpers for the tests that run against the local compose stack (tests/{integration,contract,e2e}).
-// Zero dependencies: Node's built-in test runner and fetch. Start the stack first (see CLAUDE.md).
+// Zero dependencies: Node's built-in test runner and fetch. Start the stack first (see the README, "Local stack").
 import { generateKeyPairSync, randomUUID, sign } from 'node:crypto';
 
 export const URLS = {

@@ -1,4 +1,4 @@
-// Failure behavior of the async path against the real stack (AGENTS.md sections 17 and 28): retry, dead-lettering,
+// Failure behavior of the async path against the real stack (engineering standards: Reliability, Failure and recovery): retry, dead-lettering,
 // replay, broker restarts and graceful shutdown of notification-worker.
 // DISRUPTIVE: stops and restarts PostgreSQL, RabbitMQ and the worker of the local compose stack, and takes a few
 // minutes. Not part of the regular test glob; run it on purpose:

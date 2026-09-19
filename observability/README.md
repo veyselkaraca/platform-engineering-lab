@@ -32,7 +32,7 @@ To follow one request: send it with a `traceparent` header (or take the `x-reque
 | `tracing/tempo.yaml`, `logging/loki.yaml` | Trace and log stores (single process, local storage) |
 | `grafana/datasources`, `grafana/provisioning`, `grafana/dashboards` | Datasources with trace/log cross-links, the dashboard provider, the two dashboards as JSON |
 
-Deviations from the AGENTS.md sketch: no `otel/instrumentation` directory (instrumentation is code: `src/telemetry.ts` in each service); `tracing/` and `logging/` hold the Tempo and Loki configuration.
+Deviations from the planned layout: no `otel/instrumentation` directory (instrumentation is code: `src/telemetry.ts` in each service); `tracing/` and `logging/` hold the Tempo and Loki configuration.
 
 ## Checks
 

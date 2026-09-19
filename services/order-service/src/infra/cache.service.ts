@@ -4,7 +4,7 @@ import Redis from 'ioredis';
 import { Env } from '../config/env';
 import { cacheOperations } from '../orders/orders.metrics';
 
-// Cache only, never authoritative (AGENTS.md section 21). Every failure degrades to a cache miss (NFR-4).
+// Cache only, never authoritative (engineering standards: Redis). Every failure degrades to a cache miss (NFR-4).
 @Injectable()
 export class CacheService implements OnModuleDestroy {
   private readonly log = new Logger(CacheService.name);

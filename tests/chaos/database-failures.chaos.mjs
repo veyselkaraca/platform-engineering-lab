@@ -1,4 +1,4 @@
-// PostgreSQL going away under the services that own a database (AGENTS.md sections 12.3, 17 and 28):
+// PostgreSQL going away under the services that own a database (engineering standards: Error handling, Reliability, Failure and recovery):
 // readiness turns red so traffic is removed, liveness stays green so nothing is restarted, requests get a clean and
 // fast 503 (not a 500 with a stack trace behind it), and everything recovers by itself.
 // DISRUPTIVE: stops PostgreSQL of the local compose stack (Keycloak uses it too); run it on purpose:

@@ -28,7 +28,7 @@ export function validateEnv(raw: Record<string, unknown>): Env {
     LOG_LEVEL: String(raw.LOG_LEVEL ?? 'info'),
     DATABASE_URL: required(raw, 'DATABASE_URL'),
     RABBITMQ_URL: required(raw, 'RABBITMQ_URL'),
-    // Backpressure: at most this many unacknowledged messages in flight (AGENTS.md section 17).
+    // Backpressure: at most this many unacknowledged messages in flight (engineering standards: Reliability).
     WORKER_PREFETCH: positiveInt(raw, 'WORKER_PREFETCH', 10, 1000),
     // Total processing attempts before a message is dead-lettered.
     MAX_ATTEMPTS: positiveInt(raw, 'MAX_ATTEMPTS', 3, 100),

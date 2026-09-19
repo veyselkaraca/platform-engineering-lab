@@ -1,11 +1,11 @@
 # ADR-001: Stack and service responsibilities
 
 - Status: Accepted
-- Scope: Implementation decision under AGENTS.md §9 (technology baseline). Does not change the charter.
+- Scope: Implementation decision under the [technology baseline](../architecture/engineering-standards.md#technology-baseline). Does not change the engineering standards.
 
 ## Context
 
-AGENTS.md fixes technology *families* (NestJS, PostgreSQL, Redis, RabbitMQ, Keycloak, Kubernetes/Helm, Ansible) and requires the smallest architecture that demonstrates the platform lifecycle (§7.12, §30). Concrete service boundaries and integration contracts are left open.
+The [engineering standards](../architecture/engineering-standards.md) fix technology *families* (NestJS, PostgreSQL, Redis, RabbitMQ, Keycloak, Kubernetes/Helm, Ansible) and require the smallest architecture that demonstrates the platform lifecycle (see "Simple before complex" and "Decision rule"). Concrete service boundaries and integration contracts are left open.
 
 ## Decision
 

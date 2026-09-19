@@ -32,7 +32,7 @@ const STATUS_TEXT: Record<number, string> = {
 const isHealth = (req: Request) => req.originalUrl.startsWith('/health');
 const pathOf = (req: Request) => req.originalUrl.split('?')[0];
 
-// Structured error that never leaks upstream details (AGENTS.md section 12.3).
+// Structured error that never leaks upstream details (engineering standards: Error handling).
 function fail(res: ServerResponse | Response, status: number, message: string): void {
   if (res.headersSent) {
     res.end();

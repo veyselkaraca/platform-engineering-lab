@@ -1,6 +1,6 @@
 # GitHub Actions
 
-GitHub only runs workflows from `.github/workflows/`, so the executable definitions live there, not in this directory. This is a deliberate deviation from the AGENTS.md section 10 sketch.
+GitHub only runs workflows from `.github/workflows/`, so the executable definitions live there, not in this directory. This is a deliberate deviation from the repository layout sketched in the standards.
 
 | Workflow | Role |
 |---|---|

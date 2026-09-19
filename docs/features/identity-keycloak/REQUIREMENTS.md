@@ -1,6 +1,6 @@
 # Feature: identity-keycloak — Requirements
 
-Status: **implemented** (see DESIGN for what was built and TEST-PLAN for results). Adds centralized authentication (Keycloak, OIDC/OAuth2) and JWT-based authorization to the existing services, as required by AGENTS.md §19. It delivers the auth rules already assumed by [order-notification](../order-notification/REQUIREMENTS.md) (FR-1..FR-4) and [its DESIGN](../order-notification/DESIGN.md#auth).
+Status: **implemented** (see DESIGN for what was built and TEST-PLAN for results). Adds centralized authentication (Keycloak, OIDC/OAuth2) and JWT-based authorization to the existing services, as required by the [identity standards](../../architecture/engineering-standards.md#identity-and-access). It delivers the auth rules already assumed by [order-notification](../order-notification/REQUIREMENTS.md) (FR-1..FR-4) and [its DESIGN](../order-notification/DESIGN.md#auth).
 
 ## Problem
 
@@ -61,4 +61,4 @@ User self-registration, password reset/MFA flows, social login/federation, refre
 
 ## Related
 
-[order-notification REQUIREMENTS](../order-notification/REQUIREMENTS.md) · [order-notification DESIGN — Auth](../order-notification/DESIGN.md) · AGENTS.md §19 · [ADR-001](../../decisions/ADR-001-stack-and-service-responsibilities.md)
+[order-notification REQUIREMENTS](../order-notification/REQUIREMENTS.md) · [order-notification DESIGN — Auth](../order-notification/DESIGN.md) · [identity standards](../../architecture/engineering-standards.md#identity-and-access) · [ADR-001](../../decisions/ADR-001-stack-and-service-responsibilities.md)

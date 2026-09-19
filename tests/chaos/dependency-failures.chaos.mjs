@@ -1,4 +1,4 @@
-// Failure behavior of the synchronous path against the real stack (AGENTS.md sections 17, 21 and 28):
+// Failure behavior of the synchronous path against the real stack (engineering standards: Reliability, Redis, Failure and recovery):
 // Redis (a cache, never authoritative) and user-service (a hard dependency of order creation) going away.
 // DISRUPTIVE: stops and restarts Redis and user-service of the local compose stack; run it on purpose:
 //   node --test --test-reporter=spec --test-concurrency=1 tests/chaos/dependency-failures.chaos.mjs

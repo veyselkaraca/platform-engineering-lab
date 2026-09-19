@@ -45,7 +45,7 @@ import { OrdersModule } from './orders/orders.module';
         entities: [Order, IdempotencyKey],
         migrations: [CreateOrders1700000000000],
         migrationsRun: true,
-        // A database that does not answer must fail the request, not hang it (AGENTS.md section 17).
+        // A database that does not answer must fail the request, not hang it (engineering standards: Reliability).
         connectTimeoutMS: 2000,
         // Retry so a DB that starts a moment later doesn't crash-loop the container.
         retryAttempts: 5,

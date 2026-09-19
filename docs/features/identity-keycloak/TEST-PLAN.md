@@ -1,6 +1,6 @@
 # Feature: identity-keycloak — Test Plan
 
-Layers follow AGENTS.md §12.5, failure scenarios §28. Rules: auth is never disabled to pass a test (IDN-9); unit tests use locally signed tokens, compose/smoke/e2e use real Keycloak tokens.
+Layers and failure scenarios follow the [engineering standards](../../architecture/engineering-standards.md#development-standards). Rules: auth is never disabled to pass a test (IDN-9); unit tests use locally signed tokens, compose/smoke/e2e use real Keycloak tokens.
 
 ## Layers
 

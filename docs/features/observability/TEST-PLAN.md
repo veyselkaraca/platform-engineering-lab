@@ -1,6 +1,6 @@
 # Feature: observability — Test Plan
 
-Layers follow AGENTS.md §12.5, failure scenarios §28. Rule: telemetry is tested against the real backends; nothing here mocks Prometheus, Tempo or Loki.
+Layers and failure scenarios follow the [engineering standards](../../architecture/engineering-standards.md#development-standards). Rule: telemetry is tested against the real backends; nothing here mocks Prometheus, Tempo or Loki.
 
 ## Layers
 

@@ -5,7 +5,7 @@ build/
 coverage/
 *.tsbuildinfo
 
-# Secrets (AGENTS.md §24: never commit) — only *.example files are allowed
+# Secrets (never commit secrets; see docs/architecture/engineering-standards.md) — only *.example files are allowed
 .env
 .env.*
 !.env.example

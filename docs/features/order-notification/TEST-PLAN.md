@@ -1,6 +1,6 @@
 # Feature: order-notification — Test Plan
 
-Layers follow AGENTS.md §12.5. Failure scenarios follow §28: for each, record what failed, how it was detected, the evidence, the automated behavior, any operator action, and how recovery is verified.
+Layers follow the [engineering standards](../../architecture/engineering-standards.md#development-standards). Failure scenarios follow [Failure and recovery](../../architecture/engineering-standards.md#failure-and-recovery): for each, record what failed, how it was detected, the evidence, the automated behavior, any operator action, and how recovery is verified.
 
 ## Layers
 
