@@ -26,7 +26,7 @@
         },
         "multi": true,
         "includeAll": true,
-        "allValue": ".*",
+        "allValue": ".+",
         "query": {
           "query": "label_values(http_server_request_duration_seconds_count, service_name)",
           "refId": "svc"

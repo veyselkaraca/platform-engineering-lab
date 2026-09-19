@@ -46,6 +46,20 @@ describe('dashboards as code', () => {
     const dashboard = JSON.parse(readFileSync(resolve(dir, 'application-health.json'), 'utf8'));
     assert.ok(dashboard.templating.list.some((v) => v.name === 'service'));
   });
+
+  it('"All" for a variable never expands to an empty-compatible matcher: Loki rejects {label=~".*"} (a log panel showed a parse error)', () => {
+    for (const file of files) {
+      const dashboard = JSON.parse(readFileSync(resolve(dir, file), 'utf8'));
+      for (const variable of dashboard.templating.list) {
+        if (variable.includeAll) assert.equal(variable.allValue, '.+', `${file}: ${variable.name}`);
+      }
+      for (const panel of dashboard.panels.filter((p) => p.datasource?.uid === 'loki')) {
+        for (const target of panel.targets) {
+          assert.doesNotMatch(target.expr, /=~"\.\*"/, `${file}: ${panel.title}`);
+        }
+      }
+    }
+  });
 });
 
 describe('alert rules as code', () => {

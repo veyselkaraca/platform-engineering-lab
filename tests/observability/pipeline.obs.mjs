@@ -208,6 +208,21 @@ describe('dashboards, alert rules and datasources are provisioned (OB-8, OB-9, O
       }
     }
     assert.ok(queries > 30, `only ${queries} queries checked`);
+
+    // The log panels too: Loki is stricter than Prometheus about matchers (an "All" that expands to .* is a parse error).
+    let logQueries = 0;
+    for (const file of readdirSync(dir).filter((f) => f.endsWith('.json'))) {
+      const dashboard = JSON.parse(readFileSync(resolve(dir, file), 'utf8'));
+      const allValue = Object.fromEntries(dashboard.templating.list.map((v) => [v.name, v.includeAll ? v.allValue : '.+']));
+      for (const panel of dashboard.panels.filter((p) => p.datasource?.uid === 'loki')) {
+        for (const target of panel.targets) {
+          const expr = target.expr.replaceAll('$service', allValue.service ?? '.+');
+          await lokiLines(expr, 5); // throws on a parse error
+          logQueries++;
+        }
+      }
+    }
+    assert.ok(logQueries >= 2, `only ${logQueries} log queries checked`);
   });
 
   it('every alert rule is loaded and healthy, with a severity and a runbook', async () => {

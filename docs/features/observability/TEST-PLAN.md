@@ -77,11 +77,12 @@ Defects found by these tests and fixed on the way:
 - **A stopped service kept looking ready.** When a probe cannot connect, the collector's HTTP check stops emitting the status series for that URL, and the Prometheus exporter kept the last value for five minutes, so readiness alerts were late and cleared five minutes late. `metric_expiration` is now one minute.
 - **Collector config keys were silently ignored:** `resource_constant_labels` takes `included`, not `include` (unknown keys do not fail validation). Metrics lost their `service_name` label until the collector was recreated; the live tests caught it.
 - **Worker without HTTP traffic has no HTTP metrics** (probes are excluded by design); the test now calls its API first instead of assuming the series exists.
+- **The log panel of Application health showed a Loki parse error** (found by a user opening the dashboard; every earlier check only ran the Prometheus queries): the `service` variable's "All" expanded to `.*`, and Loki refuses a selector whose matchers can all be empty. `allValue` is now `.+`; a static test forbids an empty-compatible "All" or `=~".*"` in a Loki panel, and the live dashboard test now runs every Loki query too.
 - **Chaos suites raced Keycloak's recovery:** after PostgreSQL was down, Keycloak answered 500 on the token endpoint for a while. The token helper now retries for up to a minute.
 
 Remaining gaps, stated plainly:
 
-- The dashboards were provisioned and every query was run against the live Prometheus, but the panels were **not viewed in a browser** here (logging in means typing a credential); layout and readability are unreviewed.
+- The dashboards were provisioned and every Prometheus and Loki query is run against the live servers; layout and readability were reviewed by a person once (which is how the log-panel error above was found), not by an automated check.
 - `src/telemetry.ts` has no unit test (see above); a broken bootstrap would show up in the live pipeline test.
 - Tempo/Loki outages and the `OrderEventsNotPublished` alert are rule-tested but not fired live.
 - Log records include the full pino `req`/`res` objects as attributes, which is noisy in Loki; only the redaction is verified, not a trimmed schema.
