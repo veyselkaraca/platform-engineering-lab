@@ -1,0 +1,187 @@
+# Recording rules (SLIs) and alert rules for the platform (docs/features/observability, OB-9 and OB-10).
+# Every alert is meant to lead to an operator action and points at its runbook section.
+# Objectives (see the design): gateway availability 99.5 % (5xx are errors), gateway latency 95 % under 500 ms.
+groups:
+  # ------------------------------------------------------------------------------------------------ SLIs
+  - name: sli
+    rules:
+      - record: sli:http_requests:rate5m
+        expr: sum by (service_name) (rate(http_server_request_duration_seconds_count[5m]))
+      # `or ... * 0`: a service without a single 5xx has no error series at all; it must read 0, not "no data".
+      - record: sli:http_errors:rate5m
+        expr: |
+          sum by (service_name) (rate(http_server_request_duration_seconds_count{http_response_status_code=~"5.."}[5m]))
+          or (sli:http_requests:rate5m * 0)
+      - record: sli:http_error_ratio:rate5m
+        expr: sli:http_errors:rate5m / sli:http_requests:rate5m
+
+      # Gateway availability SLI over several windows (used by the burn-rate alerts). Client errors (4xx) are not failures.
+      - record: sli:gateway_error_ratio:rate5m
+        expr: |
+          (sum(rate(http_server_request_duration_seconds_count{service_name="api-gateway", http_response_status_code=~"5.."}[5m])) or vector(0))
+          / sum(rate(http_server_request_duration_seconds_count{service_name="api-gateway"}[5m]))
+      - record: sli:gateway_error_ratio:rate30m
+        expr: |
+          (sum(rate(http_server_request_duration_seconds_count{service_name="api-gateway", http_response_status_code=~"5.."}[30m])) or vector(0))
+          / sum(rate(http_server_request_duration_seconds_count{service_name="api-gateway"}[30m]))
+      - record: sli:gateway_error_ratio:rate1h
+        expr: |
+          (sum(rate(http_server_request_duration_seconds_count{service_name="api-gateway", http_response_status_code=~"5.."}[1h])) or vector(0))
+          / sum(rate(http_server_request_duration_seconds_count{service_name="api-gateway"}[1h]))
+      - record: sli:gateway_error_ratio:rate6h
+        expr: |
+          (sum(rate(http_server_request_duration_seconds_count{service_name="api-gateway", http_response_status_code=~"5.."}[6h])) or vector(0))
+          / sum(rate(http_server_request_duration_seconds_count{service_name="api-gateway"}[6h]))
+
+      # Gateway latency SLI: share of requests slower than the 500 ms objective.
+      - record: sli:gateway_slow_ratio:rate5m
+        expr: |
+          1 - (
+            sum(rate(http_server_request_duration_seconds_bucket{service_name="api-gateway", le="0.5"}[5m]))
+            / sum(rate(http_server_request_duration_seconds_count{service_name="api-gateway"}[5m]))
+          )
+      - record: sli:gateway_slow_ratio:rate1h
+        expr: |
+          1 - (
+            sum(rate(http_server_request_duration_seconds_bucket{service_name="api-gateway", le="0.5"}[1h]))
+            / sum(rate(http_server_request_duration_seconds_count{service_name="api-gateway"}[1h]))
+          )
+
+  # ------------------------------------------------------------------------------------------------ alerts
+  - name: availability
+    rules:
+      - alert: ServiceNotReady
+        expr: min by (http_url) (httpcheck_status{http_status_class="2xx", http_url=~".*/health/ready"}) == 0
+        for: 1m
+        labels: { severity: critical }
+        annotations:
+          summary: "{{ $labels.http_url }} is not ready"
+          description: Its readiness probe has not answered 2xx for a minute. Traffic is (or should be) removed from it.
+          runbook: docs/operations/runbooks/service-alerts.md#servicenotready
+
+      - alert: TelemetryPipelineDown
+        expr: up{job=~"otel-collector|otel-collector-app|tempo|loki|grafana"} == 0
+        for: 2m
+        labels: { severity: warning }
+        annotations:
+          summary: "Observability component {{ $labels.job }} is down"
+          description: Metrics, traces or logs may be missing. Services keep working; telemetry is dropped meanwhile.
+          runbook: docs/operations/runbooks/service-alerts.md#telemetrypipelinedown
+
+      - alert: TelemetryBeingDropped
+        expr: sum(rate(otelcol_exporter_send_failed_spans[5m])) + sum(rate(otelcol_exporter_send_failed_log_records[5m])) + sum(rate(otelcol_exporter_send_failed_metric_points[5m])) > 0
+        for: 5m
+        labels: { severity: warning }
+        annotations:
+          summary: The collector cannot deliver telemetry to a backend
+          description: Traces, logs or metrics are failing to reach Tempo, Loki or Prometheus.
+          runbook: docs/operations/runbooks/service-alerts.md#telemetrypipelinedown
+
+  - name: errors-and-latency
+    rules:
+      - alert: HighErrorRate
+        expr: sli:http_error_ratio:rate5m > 0.05 and sli:http_requests:rate5m > 0.1
+        for: 5m
+        labels: { severity: warning }
+        annotations:
+          summary: "{{ $labels.service_name }} answers more than 5 % of requests with a 5xx"
+          description: "5xx ratio {{ $value | humanizePercentage }} over 5 minutes (with real traffic)."
+          runbook: docs/operations/runbooks/service-alerts.md#higherrorrate
+
+      - alert: HighLatency
+        expr: |
+          histogram_quantile(0.95, sum by (le, service_name) (rate(http_server_request_duration_seconds_bucket[5m]))) > 1
+          and sli:http_requests:rate5m > 0.1
+        for: 5m
+        labels: { severity: warning }
+        annotations:
+          summary: "{{ $labels.service_name }} p95 latency is above 1 s"
+          description: "p95 {{ $value | humanizeDuration }} over 5 minutes."
+          runbook: docs/operations/runbooks/service-alerts.md#highlatency
+
+      - alert: DatabaseUnavailable
+        expr: sum by (service_name) (increase(database_unavailable_responses_total[5m])) > 0
+        for: 1m
+        labels: { severity: critical }
+        annotations:
+          summary: "{{ $labels.service_name }} is answering 503 because its database is unreachable"
+          description: Requests are failing fast (503) and readiness is red; nothing is restarted.
+          runbook: docs/operations/runbooks/service-alerts.md#databaseunavailable
+
+      - alert: AuthenticationKeysUnavailable
+        expr: sum by (service_name) (increase(auth_rejections_total{reason="keys_unavailable"}[5m])) > 0
+        for: 1m
+        labels: { severity: critical }
+        annotations:
+          summary: "{{ $labels.service_name }} cannot verify tokens (Keycloak keys unavailable)"
+          description: It fails closed with 503 for every authenticated request.
+          runbook: docs/operations/runbooks/keycloak-outage.md
+
+  - name: async-pipeline
+    rules:
+      - alert: DeadLetterQueueNotEmpty
+        expr: max by (queue) (rabbitmq_detailed_queue_messages_ready{queue=~".*\\.dlq"}) > 0
+        for: 1m
+        labels: { severity: warning }
+        annotations:
+          summary: "{{ $labels.queue }} holds dead-lettered messages"
+          description: Some orders have no notification. Fix the cause, then replay.
+          runbook: docs/operations/runbooks/notification-dlq.md
+
+      - alert: WorkerNotConsuming
+        expr: max(rabbitmq_detailed_queue_consumers{queue="notification.order-created"}) == 0
+        for: 1m
+        labels: { severity: critical }
+        annotations:
+          summary: Nothing is consuming notification.order-created
+          description: Order events pile up in the queue until the worker is back.
+          runbook: docs/operations/runbooks/service-alerts.md#workernotconsuming
+
+      - alert: QueueBacklogGrowing
+        expr: max(rabbitmq_detailed_queue_messages_ready{queue="notification.order-created"}) > 100
+        for: 5m
+        labels: { severity: warning }
+        annotations:
+          summary: More than 100 order events are waiting for the worker
+          description: The worker is slower than the producers or not keeping up.
+          runbook: docs/operations/runbooks/service-alerts.md#queuebackloggrowing
+
+      - alert: OrderEventsNotPublished
+        expr: sum(increase(order_events_publish_failures_total[10m])) > 0
+        labels: { severity: warning }
+        annotations:
+          summary: Orders were stored but their event could not be published
+          description: Those orders will never get a notification (ADR-001 known limitation, no outbox).
+          runbook: docs/operations/runbooks/service-alerts.md#ordereventsnotpublished
+
+  # ------------------------------------------------------------------------------------------------ SLO burn rates
+  # Multi-window, multi-burn-rate (14.4x over 5m and 1h pages; 6x over 30m and 6h warns) for the 99.5 % objective:
+  # the error budget is 0.5 %, so 14.4x is 7.2 % errors and 6x is 3 %.
+  - name: slo
+    rules:
+      - alert: GatewayAvailabilityFastBurn
+        expr: sli:gateway_error_ratio:rate5m > (14.4 * 0.005) and sli:gateway_error_ratio:rate1h > (14.4 * 0.005)
+        for: 2m
+        labels: { severity: critical }
+        annotations:
+          summary: The gateway is burning its 30-day availability budget 14x too fast
+          description: "5xx ratio {{ $value | humanizePercentage }} (5m); at this rate the budget is gone in about two days."
+          runbook: docs/operations/runbooks/service-alerts.md#gatewayavailabilityburn
+
+      - alert: GatewayAvailabilitySlowBurn
+        expr: sli:gateway_error_ratio:rate30m > (6 * 0.005) and sli:gateway_error_ratio:rate6h > (6 * 0.005)
+        for: 15m
+        labels: { severity: warning }
+        annotations:
+          summary: The gateway is steadily burning its availability budget (6x)
+          description: "5xx ratio {{ $value | humanizePercentage }} (30m)."
+          runbook: docs/operations/runbooks/service-alerts.md#gatewayavailabilityburn
+
+      - alert: GatewayLatencyFastBurn
+        expr: sli:gateway_slow_ratio:rate5m > (6 * 0.05) and sli:gateway_slow_ratio:rate1h > (6 * 0.05)
+        for: 5m
+        labels: { severity: warning }
+        annotations:
+          summary: More than 30 % of gateway requests are slower than 500 ms
+          description: "{{ $value | humanizePercentage }} of requests over the 500 ms objective (5m); the objective allows 5 %."
+          runbook: docs/operations/runbooks/service-alerts.md#gatewaylatencyburn

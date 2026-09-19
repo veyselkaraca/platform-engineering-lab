@@ -1,0 +1,165 @@
+# Unit tests for observability/prometheus/rules/platform.yml (OBN-5). Run:
+#   docker run --rm --entrypoint promtool -v "$PWD/observability/prometheus:/p:ro" quay.io/prometheus/prometheus:v3.9.1 test rules /p/tests/platform.test.yml
+rule_files:
+  - ../rules/platform.yml
+
+evaluation_interval: 1m
+
+tests:
+  # ----------------------------------------------------------------------------------- readiness
+  - interval: 15s
+    input_series:
+      - series: 'httpcheck_status{http_status_class="2xx", http_url="http://user-service:3000/health/ready"}'
+        values: '1x8 0x30'
+      - series: 'httpcheck_status{http_status_class="2xx", http_url="http://order-service:3000/health/ready"}'
+        values: '1x40'
+      - series: 'httpcheck_status{http_status_class="2xx", http_url="http://user-service:3000/health/live"}'
+        values: '0x40' # liveness is not this alert's business
+    alert_rule_test:
+      - eval_time: 1m
+        alertname: ServiceNotReady
+        exp_alerts: []
+      - eval_time: 5m
+        alertname: ServiceNotReady
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              http_url: http://user-service:3000/health/ready
+            exp_annotations:
+              summary: "http://user-service:3000/health/ready is not ready"
+              description: Its readiness probe has not answered 2xx for a minute. Traffic is (or should be) removed from it.
+              runbook: docs/operations/runbooks/service-alerts.md#servicenotready
+
+  # ----------------------------------------------------------------------------------- async pipeline
+  - interval: 30s
+    input_series:
+      - series: 'rabbitmq_detailed_queue_messages_ready{queue="notification.order-created.dlq"}'
+        values: '0x4 3x20'
+      - series: 'rabbitmq_detailed_queue_messages_ready{queue="notification.order-created"}'
+        values: '0x30'
+      - series: 'rabbitmq_detailed_queue_consumers{queue="notification.order-created"}'
+        values: '1x4 0x20'
+    alert_rule_test:
+      - eval_time: 2m
+        alertname: DeadLetterQueueNotEmpty
+        exp_alerts: []
+      - eval_time: 5m
+        alertname: DeadLetterQueueNotEmpty
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              queue: notification.order-created.dlq
+            exp_annotations:
+              summary: "notification.order-created.dlq holds dead-lettered messages"
+              description: Some orders have no notification. Fix the cause, then replay.
+              runbook: docs/operations/runbooks/notification-dlq.md
+      - eval_time: 2m
+        alertname: WorkerNotConsuming
+        exp_alerts: []
+      - eval_time: 5m
+        alertname: WorkerNotConsuming
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+            exp_annotations:
+              summary: Nothing is consuming notification.order-created
+              description: Order events pile up in the queue until the worker is back.
+              runbook: docs/operations/runbooks/service-alerts.md#workernotconsuming
+
+  # ----------------------------------------------------------------------------------- errors, latency, database
+  - interval: 1m
+    input_series:
+      # order-service: 100 requests/min, 10 % of them 5xx, for the whole test
+      - series: 'http_server_request_duration_seconds_count{service_name="order-service", http_response_status_code="201"}'
+        values: '0+90x30'
+      - series: 'http_server_request_duration_seconds_count{service_name="order-service", http_response_status_code="500"}'
+        values: '0+10x30'
+      # user-service: healthy
+      - series: 'http_server_request_duration_seconds_count{service_name="user-service", http_response_status_code="200"}'
+        values: '0+100x30'
+      # database outage counter starts moving after 10 minutes
+      - series: 'database_unavailable_responses_total{service_name="user-service"}'
+        values: '0x10 0+5x20'
+    alert_rule_test:
+      - eval_time: 3m
+        alertname: HighErrorRate
+        exp_alerts: []
+      - eval_time: 15m
+        alertname: HighErrorRate
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              service_name: order-service
+            exp_annotations:
+              summary: "order-service answers more than 5 % of requests with a 5xx"
+              description: "5xx ratio 10% over 5 minutes (with real traffic)."
+              runbook: docs/operations/runbooks/service-alerts.md#higherrorrate
+      - eval_time: 9m
+        alertname: DatabaseUnavailable
+        exp_alerts: []
+      - eval_time: 15m
+        alertname: DatabaseUnavailable
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              service_name: user-service
+            exp_annotations:
+              summary: "user-service is answering 503 because its database is unreachable"
+              description: Requests are failing fast (503) and readiness is red; nothing is restarted.
+              runbook: docs/operations/runbooks/service-alerts.md#databaseunavailable
+
+  # ----------------------------------------------------------------------------------- SLO burn rate
+  - interval: 1m
+    input_series:
+      # A gateway with 10 % 5xx for 90 minutes: burns the 99.5 % budget 20x too fast.
+      - series: 'http_server_request_duration_seconds_count{service_name="api-gateway", http_response_status_code="200"}'
+        values: '0+90x90'
+      - series: 'http_server_request_duration_seconds_count{service_name="api-gateway", http_response_status_code="503"}'
+        values: '0+10x90'
+    alert_rule_test:
+      - eval_time: 1m # too early: the alert needs 2 minutes of sustained burn (`for`)
+        alertname: GatewayAvailabilityFastBurn
+        exp_alerts: []
+      - eval_time: 10m # 5m and 1h ratios both above 7.2 %: it does not wait for a full hour of data
+        alertname: GatewayAvailabilityFastBurn
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+            exp_annotations:
+              summary: The gateway is burning its 30-day availability budget 14x too fast
+              description: "5xx ratio 10% (5m); at this rate the budget is gone in about two days."
+              runbook: docs/operations/runbooks/service-alerts.md#gatewayavailabilityburn
+
+  - interval: 1m
+    input_series:
+      # A healthy gateway: 0.2 % errors is inside the budget, no alert.
+      - series: 'http_server_request_duration_seconds_count{service_name="api-gateway", http_response_status_code="200"}'
+        values: '0+998x120'
+      - series: 'http_server_request_duration_seconds_count{service_name="api-gateway", http_response_status_code="503"}'
+        values: '0+2x120'
+    alert_rule_test:
+      - eval_time: 100m
+        alertname: GatewayAvailabilityFastBurn
+        exp_alerts: []
+      - eval_time: 100m
+        alertname: GatewayAvailabilitySlowBurn
+        exp_alerts: []
+
+  # ----------------------------------------------------------------------------------- no errors at all reads as 0, not "no data"
+  - interval: 1m
+    input_series:
+      - series: 'http_server_request_duration_seconds_count{service_name="api-gateway", http_response_status_code="200"}'
+        values: '0+100x20'
+      - series: 'http_server_request_duration_seconds_count{service_name="user-service", http_response_status_code="200"}'
+        values: '0+100x20'
+    promql_expr_test:
+      - expr: sli:gateway_error_ratio:rate5m
+        eval_time: 15m
+        exp_samples:
+          - labels: 'sli:gateway_error_ratio:rate5m'
+            value: 0
+      - expr: sli:http_error_ratio:rate5m{service_name="user-service"}
+        eval_time: 15m
+        exp_samples:
+          - labels: 'sli:http_error_ratio:rate5m{service_name="user-service"}'
+            value: 0
