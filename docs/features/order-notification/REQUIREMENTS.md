@@ -30,7 +30,7 @@ An authenticated customer creates an order; the platform persists it, emits an e
 | NFR-4 | Redis unavailable must not fail order creation. |
 | NFR-5 | Errors are structured and never expose internals or secrets. Tokens/passwords are never logged. |
 | NFR-6 | Services handle SIGTERM: stop accepting work, finish in-flight, close connections. |
-| NFR-7 | Metrics per service: request rate, error rate, latency; worker: queue depth, processed/failed/dead-lettered counts. |
+| NFR-7 | Metrics per service: request rate, error rate, latency; worker: queue depth, processed/failed/dead-lettered counts. (Delivered by [observability](../observability/REQUIREMENTS.md).) |
 
 ## Out of scope
 

@@ -87,8 +87,8 @@ exporters:
   prometheus:
     endpoint: 0.0.0.0:8889
     resource_constant_labels:
-      include: [service.name, service.instance.id, service.namespace]
-    metric_expiration: 5m
+      included: [service.name, service.instance.id, service.namespace]
+    metric_expiration: 1m # a probe or service that stopped reporting must not keep its last value (readiness alerts)
 
 service:
   extensions: [health_check]

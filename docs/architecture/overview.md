@@ -31,6 +31,8 @@ Sync (HTTP) and async (RabbitMQ) paths are kept distinct on purpose: the sync pa
 | notification-worker | Async consumer with retry/DLQ | RabbitMQ, PostgreSQL | Message retried with bound, then dead-lettered; healthy messages are not blocked |
 | PostgreSQL | Persistent state, one DB per service | — | Dependent services fail readiness (traffic removed, no restart) and answer `503` meanwhile; they recover by themselves when it returns |
 | Redis | Cache only | — | Degrades latency, not correctness |
+| OpenTelemetry Collector | Single ingestion point for traces, metrics and logs; probes service readiness | Tempo, Loki (Prometheus scrapes it) | Telemetry is dropped meanwhile (bounded, never blocks a request); `TelemetryPipelineDown` fires |
+| Prometheus, Tempo, Loki, Grafana | Metrics + alerts, traces, logs, dashboards and correlation (`observability/`, compose profile `observability`) | the collector, RabbitMQ metrics | Gaps in dashboards; services unaffected |
 | RabbitMQ | Async events | — | Publish/consume degrade; queue depth is alerted |
 | Keycloak | Central identity (realm `platform-lab`, see `security/keycloak/README.md`) | PostgreSQL (its own database) | New logins fail; already-issued tokens keep validating while a service's key cache is warm (default 1 h); after that, and on a cold start, protected endpoints answer 503 (fail closed) while health stays green. Runbook: `docs/operations/runbooks/keycloak-outage.md` |
 

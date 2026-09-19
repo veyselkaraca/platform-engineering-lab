@@ -58,7 +58,7 @@ The tests use real HTTP stub backends: `test/gateway.spec.ts` covers routing, co
 - **Why it exists / owns:** one public surface and edge concerns (correlation, throttling, authentication); it owns no data.
 - **Depends on:** the backends per route (soft) and Keycloak's public keys (soft: cached, not part of readiness).
 - **On failure:** a backend outage -> 502/504 for that route. Keycloak down -> tokens keep validating while the key cache is warm, then `503` (fail closed) while `/health` stays green; runbook: `docs/operations/runbooks/keycloak-outage.md`.
-- **Observed:** JSON logs (pino) with the request id, probe requests not logged, `authorization`/`cookie` redacted; `auth.rejected` (warn) and `auth.keys_unavailable` (error) lines carry the request id and reason. Metrics (request/error rate, latency, 429 count) and traces arrive with the observability slice.
+- **Observed:** JSON logs (pino) with the request id, probe requests not logged, `authorization`/`cookie` redacted; `auth.rejected` (warn) and `auth.keys_unavailable` (error) lines carry the request id and reason. OpenTelemetry traces, metrics and logs go to the collector (`src/telemetry.ts`): request rate, errors and latency by route prefix, auth refusals by reason; the trace continues into the backends. Dashboards and alerts: `observability/`.
 - **Image:** multi-stage, non-root, `HEALTHCHECK`, npm removed from the runtime stage, tag `api-gateway:<commit-sha>`.
 - **CI:** `.github/workflows/api-gateway.yml`; its smoke test runs a user, an order and the asynchronous notification through the gateway in front of the real backends.
 - **Rollback:** redeploy the previous image tag. The gateway is stateless, so nothing needs restoring.

@@ -20,18 +20,25 @@ export const IDS = {
 
 const ISSUER = `${URLS.keycloak}/realms/platform-lab`;
 
+// Keycloak needs a while to serve tokens again after its database was down (it answers 500 meanwhile), so a token
+// request is retried for up to a minute before the test gives up.
 export async function tokenFor(username) {
-  const res = await fetch(`${ISSUER}/protocol/openid-connect/token`, {
-    method: 'POST',
-    body: new URLSearchParams({
-      grant_type: 'password',
-      client_id: 'platform-lab-dev',
-      username,
-      password: `${username}-fake-password`,
-    }),
-  });
-  if (!res.ok) throw new Error(`no token for ${username}: HTTP ${res.status} (is the stack up?)`);
-  return (await res.json()).access_token;
+  let last = 'no answer';
+  for (let attempt = 0; attempt < 30; attempt++) {
+    try {
+      const res = await fetch(`${ISSUER}/protocol/openid-connect/token`, {
+        method: 'POST',
+        body: new URLSearchParams({ grant_type: 'password', client_id: 'platform-lab-dev', username, password: `${username}-fake-password` }),
+        signal: AbortSignal.timeout(5000),
+      });
+      if (res.ok) return (await res.json()).access_token;
+      last = `HTTP ${res.status}`;
+    } catch (err) {
+      last = err.message;
+    }
+    await new Promise((r) => setTimeout(r, 2000));
+  }
+  throw new Error(`no token for ${username}: ${last} (is the stack up?)`);
 }
 
 export async function tokens() {

@@ -1,6 +1,6 @@
 # Feature: observability — Requirements
 
-Status: **draft**. Delivers AGENTS.md §16 ("Observability Standards"), §7.6 ("Observable by Default") and the observability layer of §5: logs, metrics and traces that an operator can correlate across services, dashboards, alerts and basic SLIs/SLOs. It also closes the requirements the earlier features deferred to this slice: NFR-2 and NFR-7 of [order-notification](../order-notification/REQUIREMENTS.md) and IDN-7 of [identity-keycloak](../identity-keycloak/REQUIREMENTS.md).
+Status: **implemented** (see DESIGN for what was built and TEST-PLAN for results). Delivers AGENTS.md §16 ("Observability Standards"), §7.6 ("Observable by Default") and the observability layer of §5: logs, metrics and traces that an operator can correlate across services, dashboards, alerts and basic SLIs/SLOs. It also closes the requirements the earlier features deferred to this slice: NFR-2 and NFR-7 of [order-notification](../order-notification/REQUIREMENTS.md) and IDN-7 of [identity-keycloak](../identity-keycloak/REQUIREMENTS.md).
 
 ## Problem
 

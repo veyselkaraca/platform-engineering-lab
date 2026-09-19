@@ -163,3 +163,54 @@ tests:
         exp_samples:
           - labels: 'sli:http_error_ratio:rate5m{service_name="user-service"}'
             value: 0
+
+  # ----------------------------------------------------------------------------------- events, keys, telemetry
+  - interval: 1m
+    input_series:
+      - series: 'order_events_publish_failures_total{service_name="order-service"}'
+        values: '0x5 1x20'
+      - series: 'auth_rejections_total{service_name="order-service", reason="keys_unavailable"}'
+        values: '0x5 4+4x20'
+      - series: 'auth_rejections_total{service_name="order-service", reason="missing"}'
+        values: '0+50x25' # ordinary refusals never page anyone
+      - series: 'up{job="otel-collector"}'
+        values: '1x5 0x20'
+    alert_rule_test:
+      - eval_time: 4m
+        alertname: OrderEventsNotPublished
+        exp_alerts: []
+      - eval_time: 8m # no `for`: a lost event is worth knowing about at once
+        alertname: OrderEventsNotPublished
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+            exp_annotations:
+              summary: Orders were stored but their event could not be published
+              description: Those orders will never get a notification (ADR-001 known limitation, no outbox).
+              runbook: docs/operations/runbooks/service-alerts.md#ordereventsnotpublished
+      - eval_time: 4m
+        alertname: AuthenticationKeysUnavailable
+        exp_alerts: []
+      - eval_time: 10m
+        alertname: AuthenticationKeysUnavailable
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              service_name: order-service
+            exp_annotations:
+              summary: "order-service cannot verify tokens (Keycloak keys unavailable)"
+              description: It fails closed with 503 for every authenticated request.
+              runbook: docs/operations/runbooks/keycloak-outage.md
+      - eval_time: 6m
+        alertname: TelemetryPipelineDown
+        exp_alerts: []
+      - eval_time: 10m
+        alertname: TelemetryPipelineDown
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              job: otel-collector
+            exp_annotations:
+              summary: "Observability component otel-collector is down"
+              description: Metrics, traces or logs may be missing. Services keep working; telemetry is dropped meanwhile.
+              runbook: docs/operations/runbooks/service-alerts.md#telemetrypipelinedown

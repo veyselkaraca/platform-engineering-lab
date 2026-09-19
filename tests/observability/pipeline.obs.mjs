@@ -31,6 +31,8 @@ describe('one order, seen through traces, logs and metrics', () => {
     });
     assert.equal(order.status, 201);
     await call('GET', `${URLS.gateway}/v1/users/${IDS.customer}`); // no token: a refusal to count
+    // The worker only has HTTP metrics once something calls its API (probes are not measured).
+    await call('GET', `${URLS.gateway}/v1/notifications?orderId=${order.body.id}`, { token: t.customer });
     await call('GET', `${URLS.gateway}/health/ready`, { headers: { traceparent: newTrace().traceparent } });
   });
 

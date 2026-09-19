@@ -11,6 +11,7 @@ on:
       - "infrastructure/docker/**"
       - "messaging/rabbitmq/**"
       - "security/keycloak/**"
+      - "observability/**"
       - "tests/**"
       - ".github/workflows/platform-tests.yml"
   pull_request:
@@ -19,6 +20,7 @@ on:
       - "infrastructure/docker/**"
       - "messaging/rabbitmq/**"
       - "security/keycloak/**"
+      - "observability/**"
       - "tests/**"
       - ".github/workflows/platform-tests.yml"
   workflow_dispatch:
@@ -42,10 +44,20 @@ jobs:
       - name: Start the stack
         run: |
           sh scripts/bootstrap.sh
-          docker compose -f infrastructure/docker/docker-compose.yml up -d --build --wait
+          # with the observability profile: the pipeline tests need Prometheus, Tempo, Loki and Grafana
+          docker compose -f infrastructure/docker/docker-compose.yml --profile observability up -d --build --wait
+
+      - name: Observability configuration (rules, collector)
+        run: |
+          docker run --rm --entrypoint promtool -v "$PWD/observability/prometheus:/p:ro" quay.io/prometheus/prometheus:v3.9.1 check rules /p/rules/platform.yml
+          docker run --rm --entrypoint promtool -v "$PWD/observability/prometheus:/p:ro" quay.io/prometheus/prometheus:v3.9.1 test rules /p/tests/platform.test.yml
+          docker run --rm -v "$PWD/observability/otel/collector/config.yaml:/c.yaml:ro" otel/opentelemetry-collector-contrib:0.161.0 validate --config=/c.yaml
 
       - name: Integration, contract and end-to-end tests
         run: node --test --test-concurrency=1 "tests/**/*.test.mjs"
+
+      - name: Telemetry pipeline (traces, logs, metrics, dashboards, rules)
+        run: node --test --test-concurrency=1 tests/observability/pipeline.obs.mjs
 
       - name: Keycloak outage behavior
         run: sh tests/chaos/keycloak-outage.sh
@@ -53,10 +65,13 @@ jobs:
       - name: Broker, Redis, user-service and PostgreSQL failure behavior
         run: node --test --test-concurrency=1 tests/chaos/broker-failures.chaos.mjs tests/chaos/dependency-failures.chaos.mjs tests/chaos/database-failures.chaos.mjs
 
+      - name: Observability failures and alerts
+        run: node --test --test-concurrency=1 tests/chaos/observability-failures.chaos.mjs
+
       - name: Dump compose logs on failure
         if: failure()
-        run: docker compose -f infrastructure/docker/docker-compose.yml logs --no-color || true
+        run: docker compose -f infrastructure/docker/docker-compose.yml --profile observability logs --no-color || true
 
       - name: Stop the stack
         if: always()
-        run: docker compose -f infrastructure/docker/docker-compose.yml down -v
+        run: docker compose -f infrastructure/docker/docker-compose.yml --profile observability down -v

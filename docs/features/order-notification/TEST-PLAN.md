@@ -22,7 +22,8 @@ Layers follow AGENTS.md §12.5. Failure scenarios follow §28: for each, record 
 | FR-7 | Integration: publish same `eventId` twice → one row |
 | FR-8 | Integration: poison message → retries → DLQ; healthy message behind it is processed |
 | FR-9 | Unit + integration: same key twice → one order |
-| NFR-2 | E2E: trace/request id present in every service's logs |
+| NFR-2 | E2E: trace/request id present in every service's logs. Verified against real telemetry by `tests/observability/pipeline.obs.mjs`: one order is one trace over all four services and every service's log lines for it carry the trace id |
+| NFR-7 | `tests/observability/pipeline.obs.mjs` (metrics present per service, worker outcomes, queue depth from the broker) and the alerts in [observability](../observability/TEST-PLAN.md) |
 | NFR-4 | Chaos: Redis down (`dependency-failures.chaos.mjs`) |
 | NFR-6 | Integration: SIGTERM during in-flight message |
 
@@ -65,4 +66,4 @@ Run with the stack up: `node --test --test-concurrency=1 "tests/**/*.test.mjs"` 
 
 Mutation checks: removing `enableShutdownHooks()` from the worker makes the graceful-shutdown scenario fail (exit code 137 instead of 0); making the cache rethrow its errors makes the Redis scenario fail on the first order (a cache outage would fail order creation); see also the `insert` versus `save` check in the identity-keycloak TEST-PLAN.
 
-Gaps: query-level timeouts (a stalled but connected database); no metrics assertions until the observability slice; the workflow that runs these in CI (`platform-tests.yml`) has not run on GitHub yet.
+Gaps: query-level timeouts (a stalled but connected database); metrics are asserted by the observability tests, not by these scenarios; the workflow that runs these in CI (`platform-tests.yml`) has not run on GitHub yet.
