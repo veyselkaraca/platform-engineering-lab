@@ -172,8 +172,9 @@ describe('one order, seen through traces, logs and metrics', () => {
     it('readiness of every service, Keycloak included, is a metric, and all are ready (OB-7)', async () => {
       const ready = await eventually(async () => {
         const r = await promQuery('min by (http_url) (httpcheck_status{http_status_class="2xx", http_url=~".*/health/ready"})');
-        return r.length >= 5 ? r : null;
-      }, { timeoutMs: 60_000, intervalMs: 3000 });
+        // Probes that ran while a service was still starting leave a 0 behind for a while: wait for them to age out.
+        return r.length >= 5 && r.every((x) => x.value[1] === '1') ? r : null;
+      }, { timeoutMs: 90_000, intervalMs: 3000 });
       const urls = ready.map((r) => r.metric.http_url).join(' ');
       for (const svc of [...SERVICES, 'keycloak']) assert.match(urls, new RegExp(svc));
       for (const r of ready) assert.equal(r.value[1], '1', `${r.metric.http_url} is not ready`);
