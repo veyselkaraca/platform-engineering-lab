@@ -1,10 +1,12 @@
 import { randomUUID } from 'node:crypto';
 import { Module } from '@nestjs/common';
+import { APP_FILTER } from '@nestjs/core';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TerminusModule } from '@nestjs/terminus';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { LoggerModule } from 'nestjs-pino';
 import { AuthModule } from './auth/auth.module';
+import { DatabaseUnavailableFilter } from './common/database-unavailable.filter';
 import { Env, validateEnv } from './config/env';
 import { HealthController } from './health/health.controller';
 import { CreateOrders1700000000000 } from './migrations/1700000000000-create-orders';
@@ -42,6 +44,8 @@ import { OrdersModule } from './orders/orders.module';
         entities: [Order, IdempotencyKey],
         migrations: [CreateOrders1700000000000],
         migrationsRun: true,
+        // A database that does not answer must fail the request, not hang it (AGENTS.md section 17).
+        connectTimeoutMS: 2000,
         // Retry so a DB that starts a moment later doesn't crash-loop the container.
         retryAttempts: 5,
         retryDelay: 2000,
@@ -52,5 +56,6 @@ import { OrdersModule } from './orders/orders.module';
     OrdersModule,
   ],
   controllers: [HealthController],
+  providers: [{ provide: APP_FILTER, useClass: DatabaseUnavailableFilter }],
 })
 export class AppModule {}
