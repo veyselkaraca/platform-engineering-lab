@@ -11,7 +11,7 @@ Layers follow AGENTS.md §12.5. Failure scenarios follow §28: for each, record 
 | Contract (`tests/contract`) | order-service ↔ user-service HTTP (`order-user-lookup.test.mjs`), and the `order.created` event schema as really published (`order-created-event.test.mjs`) |
 | E2E (`tests/e2e`) | Token from Keycloak → gateway → order → notification stored; one trace id across services |
 | Smoke (`scripts/smoke-test.sh`) | Post-deploy: health endpoints, one create-order round trip |
-| Chaos (`tests/chaos`) | Scenarios below: `broker-failures.chaos.mjs` (async path, DB and broker outages, graceful stop) and `keycloak-outage.sh` |
+| Chaos (`tests/chaos`) | Scenarios below: `broker-failures.chaos.mjs` (async path, DB and broker outages, graceful stop), `dependency-failures.chaos.mjs` (Redis and user-service outages) and `keycloak-outage.sh` |
 
 ## Requirement traceability
 
@@ -23,14 +23,14 @@ Layers follow AGENTS.md §12.5. Failure scenarios follow §28: for each, record 
 | FR-8 | Integration: poison message → retries → DLQ; healthy message behind it is processed |
 | FR-9 | Unit + integration: same key twice → one order |
 | NFR-2 | E2E: trace/request id present in every service's logs |
-| NFR-4 | Chaos: Redis down |
+| NFR-4 | Chaos: Redis down (`dependency-failures.chaos.mjs`) |
 | NFR-6 | Integration: SIGTERM during in-flight message |
 
 ## Failure scenarios
 
 | Scenario | Expected behavior | Detection |
 |---|---|---|
-| Redis down | Order still created; latency up; fallback to user-service | Cache error metric, log |
+| Redis down | Order still created; fallback to user-service, one warning line per outage | Cache error metric, log (`Redis unavailable`, `Redis connection restored`) |
 | user-service down | order-service returns 503, no order stored | Readiness/error-rate alert |
 | PostgreSQL down (any service) | Readiness fails, traffic removed, 503 | Readiness probe, alert |
 | RabbitMQ down at publish | Order stored, publish failure logged/counted | Publish-failure metric, alert |
@@ -44,7 +44,7 @@ Layers follow AGENTS.md §12.5. Failure scenarios follow §28: for each, record 
 
 ## Results (as built, 2026-09-19)
 
-Run with the stack up: `node --test --test-concurrency=1 "tests/**/*.test.mjs"` (integration, contract, e2e; 64 tests) and, on purpose because it is disruptive, `node --test --test-concurrency=1 tests/chaos/broker-failures.chaos.mjs` (7 scenarios, about three minutes). Broker access is through RabbitMQ's management API, so the tests need nothing installed.
+Run with the stack up: `node --test --test-concurrency=1 "tests/**/*.test.mjs"` (integration, contract, e2e; 64 tests) and, on purpose because it is disruptive, `node --test --test-concurrency=1 tests/chaos/broker-failures.chaos.mjs tests/chaos/dependency-failures.chaos.mjs` (9 scenarios, about three and a half minutes). Broker access is through RabbitMQ's management API, so the tests need nothing installed.
 
 | Requirement / scenario | Verified by | Result |
 |---|---|---|
@@ -56,8 +56,10 @@ Run with the stack up: `node --test --test-concurrency=1 "tests/**/*.test.mjs"` 
 | RabbitMQ down in worker | Chaos: persistent messages survive a broker restart while the worker is down and are processed after; with the worker running it turns not-ready, reconnects by itself and consumes again | pass |
 | RabbitMQ down at publish | Chaos: the order is still accepted (201), `order.publish_failed` is logged, the publisher reconnects on the next publish; the lost event stays lost (ADR-001 known limitation, asserted so it cannot change silently) | pass |
 | NFR-6 graceful shutdown | Chaos: SIGTERM while 3000 messages are being consumed: exit code 0 (not killed), nothing lost, no duplicates, queue empty afterwards | pass |
+| NFR-4 Redis down | `dependency-failures.chaos.mjs`: with Redis stopped, four orders in a row succeed (201) each in under 4 s through the user-service fallback, readiness stays green, the outage is exactly one warning line (not one per request or reconnect attempt), the event still reaches the worker; when Redis returns the log says so and caching resumes without a restart | pass |
+| user-service down | Same file: a user that was cached keeps ordering; an uncached user gets `503` in under 8 s (2 s lookup timeout, one retry) with no internals in the body, `user lookup failed requestId=...` logged with the response's request id, and no order stored; through the gateway only `/v1/users` breaks (`502`, no upstream address), reading an order still works, gateway and order-service readiness stay green; after `user-service` returns, ordering works again without restarting anything | pass |
 | Recovery of the rest of the stack | Chaos: after the database and broker were stopped, every service is ready again without a restart and the smoke test passes | pass |
 
-Mutation checks: removing `enableShutdownHooks()` from the worker makes the graceful-shutdown scenario fail (exit code 137 instead of 0); see also the `insert` versus `save` check in the identity-keycloak TEST-PLAN.
+Mutation checks: removing `enableShutdownHooks()` from the worker makes the graceful-shutdown scenario fail (exit code 137 instead of 0); making the cache rethrow its errors makes the Redis scenario fail on the first order (a cache outage would fail order creation); see also the `insert` versus `save` check in the identity-keycloak TEST-PLAN.
 
-Gaps: NFR-4 (Redis down) and the user-service outage scenario are not scripted yet; no metrics assertions until the observability slice; the workflow that runs these in CI (`platform-tests.yml`) has not run on GitHub yet.
+Gaps: the PostgreSQL outage of user-service/order-service themselves (readiness turning red and traffic removal) is only exercised indirectly, through the worker's database; no metrics assertions until the observability slice; the workflow that runs these in CI (`platform-tests.yml`) has not run on GitHub yet.
