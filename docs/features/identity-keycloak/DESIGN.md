@@ -58,7 +58,7 @@ Rules the verifier enforces: signature via JWKS, `iss == AUTH_ISSUER`, `aud` con
 | `AUTH_AUDIENCE` | none | `platform-api`. |
 | `AUTH_JWKS_URL` | none | Internal URL, e.g. `http://keycloak:8080/realms/platform-lab/protocol/openid-connect/certs`. |
 | `AUTH_JWKS_TIMEOUT_MS` | 2000 | Explicit timeout on the key fetch (NFR-3). |
-| `AUTH_JWKS_CACHE_SECONDS` | 3600 | See "Key refresh" below. |
+| `AUTH_JWKS_CACHE_SECONDS` | 3600 | See "Key refresh" below. In compose it is a variable (`AUTH_JWKS_CACHE_SECONDS=5 docker compose up …`), which the chaos script uses to test cache expiry. |
 | `AUTH_CLOCK_TOLERANCE_SECONDS` | 5 | Max 60. |
 
 No secrets are involved: services only verify signatures with public keys. Compose sets these once via a YAML anchor shared by all four services.

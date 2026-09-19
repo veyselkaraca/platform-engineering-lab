@@ -7,9 +7,9 @@ Layers follow AGENTS.md §12.5, failure scenarios §28. Rules: auth is never dis
 | Layer | Covers |
 |---|---|
 | Unit (per service) | Token verifier matrix, guard, role and ownership rules, config validation, log redaction |
-| Integration (`tests/integration`) | Verifier against a real HTTP JWKS endpoint (warm/cold cache, rotation, timeout); user-service `id` conflicts against real PostgreSQL |
-| Contract (`tests/contract`) | order-service → user-service call with a forwarded bearer token |
-| E2E (`tests/e2e`) | Real Keycloak token → gateway → order → notification, for customer and admin |
+| Integration (`tests/integration`) | user-service against real PostgreSQL through the running stack (`users-store.test.mjs`); static identity-config checks (`identity-config.test.mjs`). The verifier against a real HTTP JWKS endpoint lives in each service's `test/jwks-outage.spec.ts` |
+| Contract (`tests/contract`) | order-service → user-service lookup with a forwarded bearer token (`order-user-lookup.test.mjs`) |
+| E2E (`tests/e2e`) | Real Keycloak token → gateway → order → notification, for customer and admin; forged tokens refused at the gateway and every service (`order-flow.test.mjs`) |
 | Smoke (`scripts/smoke-test.sh`) | Auth checks listed below, run post-deploy and in CI |
 | Chaos (`tests/chaos`) | Keycloak stopped with warm/cold cache |
 
@@ -106,7 +106,7 @@ Real token → gateway → order created → event → notification stored, for 
 | Keycloak down, cold service | Restart a service with Keycloak stopped | Service starts and stays ready; protected calls 503, never 200 |
 | Keycloak recovers | `docker compose start keycloak` | Protected calls succeed again without restarting services |
 
-Scripted in `tests/chaos` as shell using the smoke helpers; manual until the harness exists.
+Scripted in `tests/chaos/keycloak-outage.sh`, which also runs the "past TTL" case with `AUTH_JWKS_CACHE_SECONDS=5` (a compose variable) and restores the default afterwards.
 
 ## Requirement traceability
 
@@ -119,7 +119,7 @@ Scripted in `tests/chaos` as shell using the smoke helpers; manual until the har
 | ID-6 | Authorization matrix; smoke steps 3 to 6 |
 | ID-7 | Matrix: 403 vs 404 vs empty list; identical body for non-owner and unknown id |
 | ID-8 | user-service `id` tests; ownership tests use `sub` |
-| ID-9 | Smoke uses the dev users; a repo check that the dev realm file is the only realm containing direct-grant clients and test users |
+| ID-9 | Smoke uses the dev users; `tests/integration/identity-config.test.mjs` fails if any non-dev realm file has users or direct-grant clients |
 | ID-10 | 401/403 responses carry `x-request-id`; log line asserted |
 | IDN-1 | Secret scan in CI (gitleaks or equivalent when the SAST slice lands); review that every credential in the realm and `.env.example` is marked fake |
 | IDN-2 | Redaction unit tests; chaos/smoke logs grepped for the token |
@@ -144,6 +144,17 @@ Scripted in `tests/chaos` as shell using the smoke helpers; manual until the har
 | Realm edited but volume reused | Change not applied (import skips existing realm) | Realm content differs from git | Drop `keycloak` database and re-`up` (documented) |
 | Rollback of a service | Endpoints anonymous again | Release notes; smoke step 2 fails | Roll forward; recorded as a security regression |
 
+## Running the cross-service tests
+
+The stack must be up (`docker compose -f infrastructure/docker/docker-compose.yml up -d --build --wait`), then from the repo root:
+
+```bash
+node --test --test-reporter=spec "tests/**/*.test.mjs"
+sh tests/chaos/keycloak-outage.sh
+```
+
+Node's built-in runner, no dependencies. They also run in CI (`.github/workflows/platform-tests.yml`). The tests leave data behind (new users and orders in the local databases) and rely on `dev-other` never having a user record. Environment overrides: `USER_URL`, `ORDER_URL`, `WORKER_URL`, `GATEWAY_URL`, `KEYCLOAK_URL`.
+
 ## Results (as built, 2026-09-19)
 
 | Check | Result |
@@ -153,19 +164,18 @@ Scripted in `tests/chaos` as shell using the smoke helpers; manual until the har
 | Remote JWKS: warm cache, expiry, cold start, slow IdP, recovery, rotation, unknown-`kid` cooldown | 8 cases (`test/jwks-outage.spec.ts`, real HTTP server), in every service |
 | Authorization matrix | Covered in each service's `test/http.spec.ts`, plus gateway `test/gateway.spec.ts` and `test/app.spec.ts` (real `AppModule` against a local JWKS server) |
 | Smoke (`scripts/smoke-test.sh`, real Keycloak, whole stack) | Passes; also passes for the user-service-only pipeline shape on a freshly created volume (`down -v`, `up user-service keycloak`) |
-| Chaos (`tests/chaos/keycloak-outage.sh`) | Passes: warm cache keeps working; cold restart with Keycloak down stays live and ready and answers 503; recovers without restarting the service |
+| Cross-service tests (`node --test "tests/**/*.test.mjs"`) | 50 tests pass against the compose stack: PostgreSQL-backed conflicts, order/user lookup contract, end to end order flow for both roles, forged tokens (unknown key, `alg: none`, expired) refused by the gateway and by every service, static realm/config checks. Mutation check: switching `insert` to `save` in `UsersService` makes the "does not overwrite" test fail (with `save`, a repeated id silently updates the existing user) |
+| Chaos (`tests/chaos/keycloak-outage.sh`) | Passes: warm cache keeps working; cold restart with Keycloak down stays live and ready and answers 503; recovers without restarting the service; with a 5 s key cache the service turns 503 after expiry while Keycloak is still down, with health green |
+| Secret scan | gitleaks over the full git history (18 commits at the time): no leaks |
 | Logs | No JWT (`eyJ`) in any container's logs after the full run; `auth.rejected reason=…` lines present |
 | ID-10 | 401 from gateway and from a service echo `x-request-id` and carry `WWW-Authenticate: Bearer` |
 | IDN-8 | Clean volume, repeated `up` on an existing volume, and the documented "drop the `keycloak` database" procedure all end with a healthy Keycloak and the realm imported |
 | actionlint on `.github/workflows` | Clean |
 
-Deviations and gaps, stated plainly:
+Remaining gaps, stated plainly:
 
-- The **PostgreSQL-backed** distinction between a duplicate `id` and a duplicate email (`users_pkey` vs `users_email_key`) is unit-tested with a mocked driver error and was verified by hand against the compose database (two different 409 messages). There is no automated integration test because `tests/integration` has no harness yet.
-- The **contract** layer (`tests/contract`) is still empty. The forwarded-`Authorization` behavior is covered by `UserDirectory` unit tests (header forwarded, not logged, 403 → 503 rather than "user missing") and by the smoke test.
-- **No e2e harness**: the smoke test is the end-to-end check.
-- The "only the dev realm may contain direct-grant clients and test users" repo check (ID-9) is not automated; there is currently a single realm file.
-- **Secret scanning in CI** (IDN-1) waits for the SAST/dependency-scan slice; until then it is review plus the log check above.
+- The tests need the whole stack, so they are not part of the per-service unit runs; they have their own workflow. That workflow, like the others, has not run on GitHub yet (no push); it was checked with actionlint and its commands were run locally.
+- The **`order.created` event schema** contract and the consumer's broker behavior (retry, DLQ, reconnect) are still verified by hand, as before this feature; the new tests only cover HTTP and identity.
+- **Secret scanning in CI** (IDN-1) waits for the SAST/dependency-scan slice; gitleaks was run once locally (result above) and the static checks assert the sample env and dev realm only contain placeholder values.
 - **Metrics** (IDN-7) wait for the observability slice; failures are structured log lines today.
-- **Cache-expiry against a real Keycloak** (default one hour) is not exercised by the chaos script; that path is covered by the JWKS unit test with a short TTL.
-- The pipelines have not run on GitHub yet (no push); the CI changes were checked with actionlint and by reproducing the smoke step with docker compose.
+- Access-token expiry against real Keycloak is not exercised (5 minutes); expiry handling is covered by unit tests and by the forged expired token in the e2e test.
