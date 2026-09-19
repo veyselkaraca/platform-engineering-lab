@@ -36,6 +36,7 @@ jobs:
       contents: read
       packages: write
       security-events: write
+      actions: read
     with:
       service: api-gateway
       # The gateway is verified in front of the real backends: a user, an order and its async notification all go through it.

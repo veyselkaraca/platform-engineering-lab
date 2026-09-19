@@ -36,6 +36,7 @@ jobs:
       contents: read
       packages: write
       security-events: write
+      actions: read
     with:
       service: notification-worker
       # The worker is exercised end to end: an order created via order-service must arrive as a notification.

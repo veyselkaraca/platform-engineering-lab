@@ -36,6 +36,7 @@ jobs:
       contents: read
       packages: write
       security-events: write
+      actions: read
     with:
       service: order-service
       # The smoke test follows the order through user-service and on to the worker; build those from source.
