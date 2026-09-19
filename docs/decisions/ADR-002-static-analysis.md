@@ -9,14 +9,14 @@ The service pipelines ran CodeQL as their only static analysis step. That step u
 
 ## Decision
 
-- **SonarQube (Community Build) is the quality gate.** Each service pipeline starts a throwaway SonarQube server as a service container, runs the scanner with `sonar.qualitygate.wait=true`, and fails the build when the gate fails. A persistent instance in the local compose stack (profile `quality`) shows the same analysis on a dashboard.
+- **SonarQube (Community Build) is the quality gate.** Each service pipeline starts a throwaway SonarQube server (the compose `quality` profile on the runner), runs the scanner with `sonar.qualitygate.wait=true`, and fails the build when the gate fails. A persistent instance in the local compose stack (profile `quality`) shows the same analysis on a dashboard.
 - **The gate is SonarQube's built-in "Sonar way"** (conditions on new code; on a throwaway server the first analysis treats all code as new, so every run judges the whole code base):
   - no new issues, and Reliability, Security and Maintainability ratings are all A;
   - all Security Hotspots are reviewed (100 %);
   - coverage on new code is at least 80 %;
   - duplicated lines density on new code is at most 3 %.
 - **CodeQL stays as a security-focused second layer that does not gate.** It reports data-flow findings to the repository Security tab. There is exactly one blocking gate, so there is one place to look when a build fails.
-- **Gate and scanner configuration are files in `security/sonar/`**; CodeQL configuration is in `security/sast/`. Nothing is set by hand in a UI.
+- **Scanner configuration and the run script are files in `security/sonar/`**; CodeQL configuration is in `security/sast/`. Nothing is set by hand in a UI. The gate is SonarQube's built-in one, which cannot be edited, so there is no gate file; `analyze.sh` refuses to scan when the default gate is not the built-in Sonar way.
 - Coverage comes from Jest (`lcov`) so the coverage condition is real. At the time of this decision the lowest service is at 81 % statements.
 
 ## Consequences
