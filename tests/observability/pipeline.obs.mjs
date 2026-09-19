@@ -21,18 +21,21 @@ describe('one order, seen through traces, logs and metrics', () => {
 
   before(async () => {
     t = await tokens();
-    await registerUser(t.admin, { id: IDS.customer, email: 'dev-customer@example.invalid', name: 'Dev Customer' });
+    // A user nobody looked up in the last minute: order-service caches lookups in Redis (60 s), and a cache hit means
+    // no call to user-service, hence no user-service span or log line in this trace. An admin orders on their behalf.
+    const userId = randomUUID();
+    await registerUser(t.admin, { id: userId, email: `obs-${userId}@example.invalid`, name: 'Obs User' });
     unauthenticatedBefore.missing = await promScalar('sum(auth_rejections_total{reason="missing"})');
     trace = newTrace();
     order = await call('POST', `${URLS.gateway}/v1/orders`, {
-      token: t.customer,
+      token: t.admin,
       headers: { traceparent: trace.traceparent, 'idempotency-key': randomUUID(), 'x-request-id': `obs-${trace.traceId}` },
-      body: { userId: IDS.customer, amount: 11, description },
+      body: { userId, amount: 11, description },
     });
     assert.equal(order.status, 201);
     await call('GET', `${URLS.gateway}/v1/users/${IDS.customer}`); // no token: a refusal to count
     // The worker only has HTTP metrics once something calls its API (probes are not measured).
-    await call('GET', `${URLS.gateway}/v1/notifications?orderId=${order.body.id}`, { token: t.customer });
+    await call('GET', `${URLS.gateway}/v1/notifications?orderId=${order.body.id}`, { token: t.admin });
     await call('GET', `${URLS.gateway}/health/ready`, { headers: { traceparent: newTrace().traceparent } });
   });
 
@@ -40,10 +43,14 @@ describe('one order, seen through traces, logs and metrics', () => {
     let spans;
     before(async () => {
       // Tempo needs a moment; the worker's spans arrive after the asynchronous hop.
+      let seen = 'trace not found';
       spans = await eventually(async () => {
         const s = await tempoSpans(trace.traceId);
+        if (s) seen = `services with spans: ${[...new Set(s.map((x) => x.service))].join(', ')}`;
         return s && SERVICES.every((svc) => s.some((x) => x.service === svc)) ? s : null;
-      }, { timeoutMs: 90_000, intervalMs: 3000 });
+      }, { timeoutMs: 90_000, intervalMs: 3000 }).catch((err) => {
+        throw new Error(`${err.message} (trace ${trace.traceId}; ${seen})`);
+      });
     });
 
     it('is a single trace across the gateway, order-service, user-service and notification-worker', () => {
@@ -70,7 +77,7 @@ describe('one order, seen through traces, logs and metrics', () => {
 
     it('records no credentials and no SQL parameter values (OB-11)', () => {
       const everything = JSON.stringify(spans.map((s) => s.raw));
-      assert.ok(!everything.includes(t.customer.slice(0, 40)), 'the bearer token is in a span');
+      assert.ok(!everything.includes(t.admin.slice(0, 40)), 'the bearer token is in a span');
       assert.doesNotMatch(everything, /authorization/i);
       assert.ok(!everything.includes(description), 'a SQL parameter value is in a span');
     });
@@ -86,10 +93,14 @@ describe('one order, seen through traces, logs and metrics', () => {
   describe('logs (OB-3)', () => {
     let lines;
     before(async () => {
+      let seen = 'no lines';
       lines = await eventually(async () => {
         const found = await lokiLines(`{service_name=~".+"} | trace_id="${trace.traceId}"`);
+        seen = `services with lines: ${[...new Set(found.map((l) => l.service))].join(', ') || 'none'}`;
         return SERVICES.every((svc) => found.some((l) => l.service === svc)) ? found : null;
-      }, { timeoutMs: 90_000, intervalMs: 3000 });
+      }, { timeoutMs: 90_000, intervalMs: 3000 }).catch((err) => {
+        throw new Error(`${err.message} (trace ${trace.traceId}; ${seen})`);
+      });
     });
 
     it('every service logged this request under the same trace id', () => {
@@ -105,7 +116,7 @@ describe('one order, seen through traces, logs and metrics', () => {
     });
 
     it('never contain the token or the Authorization header value (OB-11)', async () => {
-      const marker = t.customer.slice(20, 60); // a stretch of the token, not the (guessable) JWT header
+      const marker = t.admin.slice(20, 60); // a stretch of the token, not the (guessable) JWT header
       const leaked = await lokiLines(`{service_name=~".+"} |= "${marker}"`);
       assert.equal(leaked.length, 0);
       const bearer = await lokiLines('{service_name=~".+"} |~ "(?i)bearer ey"');
