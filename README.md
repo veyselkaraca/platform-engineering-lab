@@ -2,7 +2,7 @@
 
 Production-like reference platform demonstrating the full delivery lifecycle: build, test, scan, deploy, observe, recover, roll back.
 
-The engineering rules are in [docs/architecture/engineering-standards.md](docs/architecture/engineering-standards.md); the component view is in [docs/architecture/overview.md](docs/architecture/overview.md). Feature-level docs live in [docs/features/](docs/features/).
+The engineering rules are in [docs/architecture/engineering-standards.md](docs/architecture/engineering-standards.md); the component view is in [docs/architecture/overview.md](docs/architecture/overview.md). Features are specified in GitHub issues (Feature template); the docs of the first three features are in [docs/features/](docs/features/).
 
 ## Layout
 

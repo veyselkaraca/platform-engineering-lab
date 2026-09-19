@@ -1,6 +1,6 @@
 # Engineering Standards
 
-The rules every component and feature in this repository is held to. Feature docs (`docs/features/<name>/`) and ADRs (`docs/decisions/`) may specify details but must stay consistent with this page; where they conflict, this page wins. Concrete choices are in [ADR-001](../decisions/ADR-001-stack-and-service-responsibilities.md); the component view is in the [overview](overview.md).
+The rules every component and feature in this repository is held to. Feature issues (see [Documentation](#documentation)), the docs of the first three features (`docs/features/`) and ADRs (`docs/decisions/`) may specify details but must stay consistent with this page; where they conflict, this page wins. Concrete choices are in [ADR-001](../decisions/ADR-001-stack-and-service-responsibilities.md); the component view is in the [overview](overview.md).
 
 ## Purpose and scope
 
@@ -91,7 +91,7 @@ Commits are coherent, single-purpose changes: do not mix refactoring, features, 
 
 ## Documentation
 
-The repository must be understandable without oral explanation. Feature work lives in `docs/features/<name>/` (`REQUIREMENTS.md`, `DESIGN.md`, `TEST-PLAN.md`, `OPERATIONS.md`); decisions in `docs/decisions/`; runbooks in `docs/operations/runbooks/`. Every major component answers: why it exists, what it owns, what it depends on, what happens when it fails, how it is observed, deployed and rolled back (see the [component contract](overview.md#component-contract)).
+The repository must be understandable without oral explanation. Feature work is specified in a GitHub issue opened from the Feature template (`.github/ISSUE_TEMPLATE/feature.yml`), whose sections are Requirements, Design, Test plan and Operations; no per-feature files are added under `docs/`. The three features built before this rule (identity-keycloak, observability, order-notification) keep their `docs/features/<name>/` files as the record of what was built. What outlives a feature goes in the repository: decisions in `docs/decisions/`; runbooks in `docs/operations/runbooks/`. Every major component answers: why it exists, what it owns, what it depends on, what happens when it fails, how it is observed, deployed and rolled back (see the [component contract](overview.md#component-contract)).
 
 ## Definition of done
 
@@ -117,4 +117,4 @@ Never: commit secrets, permanently disable security controls to pass tests, repl
 
 ## Changing these standards
 
-Features, fixes, upgrades and refactors change implementation and feature docs, not this page. Changing the project's core purpose, removing an architectural responsibility, or replacing the platform model is a new project direction and needs an explicit project-level review.
+Features, fixes, upgrades and refactors change implementation and the feature's issue, not this page. Changing the project's core purpose, removing an architectural responsibility, or replacing the platform model is a new project direction and needs an explicit project-level review.

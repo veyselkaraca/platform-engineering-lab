@@ -1,0 +1,66 @@
+name: Feature
+description: A platform capability. The requirements, design, test plan and operations notes live in this issue, not in files under docs/features/.
+labels: ["type:feature"]
+body:
+  - type: textarea
+    id: why
+    attributes:
+      label: Why
+      description: The problem this solves and what breaks or stays unproven without it.
+    validations:
+      required: true
+  - type: textarea
+    id: requirements
+    attributes:
+      label: Requirements
+      description: Numbered, testable requirements (functional and non-functional), plus what is explicitly out of scope.
+      placeholder: |
+        - XX-1 ...
+        - XX-2 ...
+
+        Out of scope: ...
+    validations:
+      required: true
+  - type: textarea
+    id: design
+    attributes:
+      label: Design
+      description: Approach, alternatives rejected and why, configuration, failure behavior, and what it adds to operate (new components need a stated reason, burden, monitoring, test and removal path).
+    validations:
+      required: true
+  - type: textarea
+    id: test-plan
+    attributes:
+      label: Test plan
+      description: Layers used, one row per scenario with the expected result, and the failure scenarios that will be exercised.
+    validations:
+      required: true
+  - type: textarea
+    id: operations
+    attributes:
+      label: Operations
+      description: How to run it, how it is observed, what happens when it fails, how it is rolled back, and the runbook it needs (runbooks stay in docs/operations/runbooks/).
+    validations:
+      required: true
+  - type: textarea
+    id: done
+    attributes:
+      label: Done when
+      description: Checklist derived from the Definition of done in docs/architecture/engineering-standards.md. Drop items that do not apply and say why.
+      value: |
+        - [ ] Requirements above are met and tested
+        - [ ] Static analysis and security checks pass
+        - [ ] Configuration is externalized; no secrets committed
+        - [ ] Logs, metrics and traces where applicable
+        - [ ] Failure behavior tested
+        - [ ] Rollback defined
+        - [ ] Durable docs updated (README, runbooks, ADR if a decision was made)
+    validations:
+      required: true
+  - type: textarea
+    id: references
+    attributes:
+      label: References
+      description: Links to the standards, ADRs, related issues and existing docs this depends on.
+    validations:
+      required: false
