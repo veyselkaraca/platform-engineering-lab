@@ -43,12 +43,12 @@ Kubernetes/Helm packaging of the stack (its own slice; the configuration is writ
 | OBN-3 | Retention is bounded for local use and declared in configuration (metrics, traces, logs). Data lives in named volumes; nothing is written into the repository. |
 | OBN-4 | All configuration is declarative files under `observability/` (Collector, Prometheus, Tempo, Loki, Grafana provisioning); no clicking in UIs is needed to get a working setup, and it is idempotent on repeated `up`. |
 | OBN-5 | Configuration is validated automatically: Collector config, Prometheus config and rules (`promtool`), dashboard JSON, and the alert rules' unit tests where practical. |
-| OBN-6 | The stack itself is observable: Collector, Prometheus, Tempo, Loki and Grafana have health checks and are scraped or probed. |
+| OBN-6 | The stack itself is observable: Collector, Prometheus, Tempo, Loki and Grafana are scraped (`up`), and have compose health checks where the image has a shell (Tempo, Prometheus, Grafana; the Collector and Loki images do not). |
 | OBN-7 | Backend or Collector outages are survivable and visible: services keep working (tested), and telemetry resumes when the backend returns. |
 
 ## Verification (feeds TEST-PLAN)
 
-- Unit: telemetry bootstrap (config, sampler, exporters disabled/enabled), custom metric emission (auth rejections, worker counters), no sensitive attributes.
+- Unit: custom metric emission (auth rejections, worker counters, order/lookup/cache counters). The bootstrap itself (`telemetry.ts`) is verified by the live tests, not in Jest (see TEST-PLAN).
 - Integration/e2e against the running stack: one order → one trace containing all four services; logs of that trace queryable in Loki; the expected metrics present in Prometheus; dashboards and datasources provisioned; alert rules loaded.
 - Failure: Collector stopped → requests unaffected and telemetry resumes; DLQ message → `DeadLetterQueueNotEmpty` fires and clears; service stopped → `ServiceNotReady` fires.
 - Static: `promtool check config/rules`, Collector `validate`, dashboard JSON parse, no secrets.
