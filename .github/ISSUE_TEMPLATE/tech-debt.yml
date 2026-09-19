@@ -1,0 +1,34 @@
+name: Tech debt or improvement
+description: A bug, a known limitation, an optimization or upkeep (dependency, CI, cleanup) that is not a new platform capability.
+labels: ["type:tech-debt"]
+body:
+  - type: textarea
+    id: why
+    attributes:
+      label: Why
+      description: What is wrong or slow or about to break, with the evidence (log line, run link, measurement, deadline). For a bug, add the steps to reproduce and expected versus actual behavior.
+    validations:
+      required: true
+  - type: textarea
+    id: approach
+    attributes:
+      label: Approach
+      description: Options considered, the one proposed and its trade-off. Say what stays unchanged (a security or observability control must not be weakened to gain speed or quiet).
+    validations:
+      required: false
+  - type: textarea
+    id: done
+    attributes:
+      label: Done when
+      description: Checklist of verifiable outcomes, including how the result is measured or proven.
+      value: |
+        - [ ]
+    validations:
+      required: true
+  - type: textarea
+    id: references
+    attributes:
+      label: References
+      description: Links to runs, docs, ADRs and related issues.
+    validations:
+      required: false
