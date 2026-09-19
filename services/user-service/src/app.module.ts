@@ -11,6 +11,7 @@ import { Env, validateEnv } from './config/env';
 import { HealthController } from './health/health.controller';
 import { CreateUsers1700000000000 } from './migrations/1700000000000-create-users';
 import { User } from './users/user.entity';
+import { TelemetryLifecycle } from './telemetry.lifecycle';
 import { UsersModule } from './users/users.module';
 
 @Module({
@@ -55,6 +56,6 @@ import { UsersModule } from './users/users.module';
     UsersModule,
   ],
   controllers: [HealthController],
-  providers: [{ provide: APP_FILTER, useClass: DatabaseUnavailableFilter }],
+  providers: [{ provide: APP_FILTER, useClass: DatabaseUnavailableFilter }, TelemetryLifecycle],
 })
 export class AppModule {}

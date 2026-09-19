@@ -1,3 +1,4 @@
+import './telemetry'; // must stay first: instruments modules as they load
 import { ConfigService } from '@nestjs/config';
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';

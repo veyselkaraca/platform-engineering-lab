@@ -7,6 +7,7 @@ import { EventPublisher } from '../infra/event-publisher.service';
 import { UserDirectory } from '../users/user-directory.service';
 import { CreateOrderDto } from './create-order.dto';
 import { IdempotencyKey } from './idempotency-key.entity';
+import { eventPublishFailures, ordersCreated } from './orders.metrics';
 import { Order } from './order.entity';
 
 export interface CreateResult {
@@ -59,6 +60,7 @@ export class OrdersService {
       throw err;
     }
 
+    ordersCreated.add(1);
     await this.publishCreated(order, correlationId);
     return { order, created: true };
   }
@@ -92,6 +94,7 @@ export class OrdersService {
         data: { orderId: order.id, userId: order.userId, amount: order.amount, description: order.description },
       });
     } catch (err) {
+      eventPublishFailures.add(1);
       this.log.error(`order.publish_failed orderId=${order.id} correlationId=${correlationId} cause=${(err as Error).message}`);
     }
   }

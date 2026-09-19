@@ -1,8 +1,11 @@
 import { randomUUID } from 'node:crypto';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { NextFunction, Request, RequestHandler, Response } from 'express';
+import { context } from '@opentelemetry/api';
+import { getRPCMetadata } from '@opentelemetry/core';
 import { rateLimit } from 'express-rate-limit';
 import { createProxyMiddleware } from 'http-proxy-middleware';
+import { recordAuthRejection } from '../auth/auth.metrics';
 import { KeysUnavailable, TokenInvalid, TokenVerifier } from '../auth/token-verifier';
 
 export interface GatewayConfig {
@@ -79,6 +82,7 @@ function authenticate(config: GatewayConfig): RequestHandler {
       await config.verifier.verify(match[1]);
     } catch (err) {
       if (err instanceof TokenInvalid) return reject(res, requestId, err.reason);
+      recordAuthRejection('keys_unavailable');
       config.logError(`auth.keys_unavailable requestId=${requestId} cause=${err instanceof KeysUnavailable ? err.message : 'unexpected'}`);
       return fail(res, 503, 'Authentication is temporarily unavailable');
     }
@@ -86,6 +90,7 @@ function authenticate(config: GatewayConfig): RequestHandler {
   };
 
   function reject(res: Response, requestId: string, reason: string): void {
+    recordAuthRejection(reason);
     config.logWarn(`auth.rejected requestId=${requestId} reason=${reason}`);
     res.setHeader('www-authenticate', 'Bearer');
     fail(res, 401, 'Invalid or missing token');
@@ -122,6 +127,9 @@ function router(config: GatewayConfig): RequestHandler {
     const path = pathOf(req);
     const match = proxies.find(({ prefix }) => path === prefix || path.startsWith(`${prefix}/`));
     if (!match) return next(); // unknown route: falls through to the framework's 404
+    // Telemetry: label the request by the route prefix it matched, not by the catch-all Express route it went through.
+    const rpc = getRPCMetadata(context.active());
+    if (rpc) rpc.route = match.prefix;
     void authenticated(req, res, (err?: unknown) => (err ? next(err) : void match.proxy(req, res, next)));
   };
 }

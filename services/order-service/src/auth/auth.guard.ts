@@ -10,6 +10,7 @@ import {
 import { Reflector } from '@nestjs/core';
 import type { Response } from 'express';
 import { AuthedRequest, IS_PUBLIC, ROLES } from './auth.decorators';
+import { recordAuthRejection } from './auth.metrics';
 import { RejectReason, TokenInvalid, TokenVerifier } from './token-verifier';
 
 // Global guard: authenticates every route except @Public(), then applies @Roles(). Deny by default.
@@ -38,12 +39,14 @@ export class AuthGuard implements CanActivate {
       req.principal = await this.verifier.verify(match[1]);
     } catch (err) {
       if (err instanceof TokenInvalid) return this.unauthorized(res, requestId, err.reason);
+      recordAuthRejection('keys_unavailable');
       this.log.error(`auth.keys_unavailable requestId=${requestId} cause=${(err as Error).message}`);
       throw new ServiceUnavailableException('Authentication is temporarily unavailable');
     }
 
     const roles = this.reflector.getAllAndOverride<string[] | undefined>(ROLES, targets);
     if (roles && !roles.some((r) => req.principal!.roles.includes(r))) {
+      recordAuthRejection('role');
       this.log.warn(`auth.forbidden requestId=${requestId} sub=${req.principal.sub} reason=role route=${req.method} ${req.route?.path ?? req.path}`);
       throw new ForbiddenException('Forbidden');
     }
@@ -51,6 +54,7 @@ export class AuthGuard implements CanActivate {
   }
 
   private unauthorized(res: Response, requestId: string, reason: RejectReason): never {
+    recordAuthRejection(reason);
     this.log.warn(`auth.rejected requestId=${requestId} reason=${reason}`);
     res.setHeader('www-authenticate', 'Bearer');
     throw new UnauthorizedException('Invalid or missing token');

@@ -13,6 +13,14 @@ x-auth-env: &auth-env
   AUTH_JWKS_URL: http://keycloak:8080/realms/platform-lab/protocol/openid-connect/certs
   AUTH_JWKS_CACHE_SECONDS: ${AUTH_JWKS_CACHE_SECONDS:-3600}
 
+x-otel-env: &otel-env
+  # Telemetry (docs/features/observability): always on, exported to the collector. With the observability profile off
+  # the collector does not exist and the bounded exports are simply dropped. OTEL_SERVICE_NAME is set per service.
+  OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
+  OTEL_SEMCONV_STABILITY_OPT_IN: http
+  OTEL_TRACES_SAMPLER: ${OTEL_TRACES_SAMPLER:-parentbased_always_on}
+  OTEL_RESOURCE_ATTRIBUTES: service.namespace=platform-lab,deployment.environment.name=local
+
 services:
   postgres:
     image: postgres:17-alpine
@@ -140,7 +148,8 @@ services:
       PORT: 3000
       LOG_LEVEL: ${LOG_LEVEL:-info}
       DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/user_service
-      <<: *auth-env
+      <<: [*auth-env, *otel-env]
+      OTEL_SERVICE_NAME: user-service
     ports:
       - "127.0.0.1:${USER_SERVICE_HOST_PORT:-3001}:3000"
     depends_on:
@@ -159,7 +168,8 @@ services:
       PORT: 3000
       LOG_LEVEL: ${LOG_LEVEL:-info}
       DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/order_service
-      <<: *auth-env
+      <<: [*auth-env, *otel-env]
+      OTEL_SERVICE_NAME: order-service
       REDIS_URL: redis://redis:6379
       RABBITMQ_URL: amqp://${RABBITMQ_DEFAULT_USER}:${RABBITMQ_DEFAULT_PASS}@rabbitmq:5672
       USER_SERVICE_URL: http://user-service:3000
@@ -189,7 +199,8 @@ services:
       PORT: 3000
       LOG_LEVEL: ${LOG_LEVEL:-info}
       DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/notification_worker
-      <<: *auth-env
+      <<: [*auth-env, *otel-env]
+      OTEL_SERVICE_NAME: notification-worker
       RABBITMQ_URL: amqp://${RABBITMQ_DEFAULT_USER}:${RABBITMQ_DEFAULT_PASS}@rabbitmq:5672
       WORKER_PREFETCH: 10
       MAX_ATTEMPTS: 3
@@ -220,7 +231,8 @@ services:
       NOTIFICATION_WORKER_URL: http://notification-worker:3000
       UPSTREAM_TIMEOUT_MS: 10000
       RATE_LIMIT_PER_MINUTE: ${RATE_LIMIT_PER_MINUTE:-120}
-      <<: *auth-env
+      <<: [*auth-env, *otel-env]
+      OTEL_SERVICE_NAME: api-gateway
     ports:
       - "127.0.0.1:${API_GATEWAY_HOST_PORT:-8080}:3000"
     # Ordering only: the gateway does not fail when a backend is down (it answers 502 for that route).
@@ -233,6 +245,108 @@ services:
         condition: service_started
     restart: unless-stopped
 
+  # ---- Observability stack (docs/features/observability). Opt-in: docker compose --profile observability up -d
+  # Services always send OTLP to the collector; without this profile the exports are simply dropped (OB-1).
+  otel-collector:
+    profiles: [observability]
+    image: otel/opentelemetry-collector-contrib:0.161.0
+    command: ["--config=/etc/otelcol/config.yaml"]
+    volumes:
+      - ../../observability/otel/collector/config.yaml:/etc/otelcol/config.yaml:ro
+    # No healthcheck: the image has no shell. Prometheus scrapes its self metrics (up{job="otel-collector"}).
+    depends_on:
+      tempo:
+        condition: service_healthy
+      loki:
+        condition: service_started
+    restart: unless-stopped
+
+  tempo:
+    profiles: [observability]
+    image: grafana/tempo:2.8.2
+    command: ["-config.file=/etc/tempo/tempo.yaml"]
+    volumes:
+      - ../../observability/tracing/tempo.yaml:/etc/tempo/tempo.yaml:ro
+      - tempo-data:/var/tempo
+    ports:
+      - "127.0.0.1:3200:3200"
+    healthcheck:
+      test: ["CMD", "/busybox/wget", "-qO-", "http://localhost:3200/ready"]
+      interval: 10s
+      timeout: 3s
+      retries: 12
+      start_period: 20s
+    restart: unless-stopped
+
+  loki:
+    profiles: [observability]
+    image: grafana/loki:3.7.8
+    command: ["-config.file=/etc/loki/loki.yaml"]
+    volumes:
+      - ../../observability/logging/loki.yaml:/etc/loki/loki.yaml:ro
+      - loki-data:/loki
+    ports:
+      - "127.0.0.1:3100:3100"
+    # No healthcheck: the image has no shell. Grafana's datasource health and Prometheus (up{job="loki"}) cover it.
+    restart: unless-stopped
+
+  prometheus:
+    profiles: [observability]
+    image: quay.io/prometheus/prometheus:v3.9.1
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=2d
+    volumes:
+      - ../../observability/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ../../observability/prometheus/rules:/etc/prometheus/rules:ro
+      - prometheus-data:/prometheus
+    ports:
+      - "127.0.0.1:${PROMETHEUS_HOST_PORT:-9090}:9090"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:9090/-/ready"]
+      interval: 10s
+      timeout: 3s
+      retries: 12
+      start_period: 10s
+    restart: unless-stopped
+
+  grafana:
+    profiles: [observability]
+    image: grafana/grafana:12.3.3
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:?set in .env}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?set in .env}
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+    volumes:
+      - ../../observability/grafana/datasources:/etc/grafana/provisioning/datasources:ro
+      - ../../observability/grafana/provisioning:/etc/grafana/provisioning/dashboards:ro
+      - ../../observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    ports:
+      - "127.0.0.1:${GRAFANA_HOST_PORT:-3000}:3000"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/api/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 12
+      start_period: 20s
+    depends_on:
+      prometheus:
+        condition: service_healthy
+      tempo:
+        condition: service_healthy
+      loki:
+        condition: service_started
+    restart: unless-stopped
+
 volumes:
   postgres-data:
   rabbitmq-data:
+  prometheus-data:
+  tempo-data:
+  loki-data:
+  grafana-data:

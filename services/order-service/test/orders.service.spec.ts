@@ -1,3 +1,5 @@
+// The metrics helper must be imported first: instruments created before a MeterProvider exists stay no-ops.
+import { metricValue } from './support/metrics';
 import { ConflictException, Logger, UnprocessableEntityException } from '@nestjs/common';
 import { QueryFailedError } from 'typeorm';
 import { EventPublisher } from '../src/infra/event-publisher.service';
@@ -48,6 +50,31 @@ describe('OrdersService', () => {
     expect(routingKey).toBe('order.created');
     expect(event).toMatchObject({ type: 'order.created', correlationId: 'req-1', data: { orderId: 'o1', userId: 'u1', amount: 10.5 } });
     expect(event.eventId).toEqual(expect.any(String));
+  });
+
+  it('counts a stored order once, and a failed publish separately', async () => {
+    const created = await metricValue('orders.created');
+    const failures = await metricValue('order.events.publish.failures');
+    const { service, events } = setup();
+    await service.create(dto, undefined, 'req-1');
+    expect(await metricValue('orders.created')).toBe(created + 1);
+    expect(await metricValue('order.events.publish.failures')).toBe(failures);
+
+    events.publish.mockRejectedValue(new Error('broker down'));
+    await service.create(dto, undefined, 'req-2');
+    expect(await metricValue('orders.created')).toBe(created + 2);
+    expect(await metricValue('order.events.publish.failures')).toBe(failures + 1);
+  });
+
+  it('does not count an idempotent replay or a rejected order as created', async () => {
+    const created = await metricValue('orders.created');
+    const { service, keys, users } = setup();
+    keys.findOneBy.mockResolvedValue({ key: 'key-1', orderId: 'o1' });
+    await service.create(dto, 'key-1', 'req-1');
+    keys.findOneBy.mockResolvedValue(null);
+    users.exists.mockResolvedValue(false);
+    await expect(service.create(dto, undefined, 'req-2')).rejects.toBeInstanceOf(UnprocessableEntityException);
+    expect(await metricValue('orders.created')).toBe(created);
   });
 
   it('rejects an unknown user with 422 and stores/publishes nothing', async () => {

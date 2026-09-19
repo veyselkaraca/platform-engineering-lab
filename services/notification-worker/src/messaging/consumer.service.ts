@@ -4,6 +4,7 @@ import { ChannelModel, ConfirmChannel, ConsumeMessage, connect } from 'amqplib';
 import { Env } from '../config/env';
 import { NotificationsService } from '../notifications/notifications.service';
 import { PermanentError, parseOrderCreated } from './order-created.event';
+import { messages, processingDuration } from './messaging.metrics';
 import { DLQ, MAIN_QUEUE } from './topology';
 
 const CONNECT_TIMEOUT_MS = 2000;
@@ -59,27 +60,41 @@ export class ConsumerService implements OnApplicationBootstrap, OnModuleDestroy 
   }
 
   async handleMessage(ch: ConfirmChannel, msg: ConsumeMessage): Promise<void> {
+    const started = process.hrtime.bigint();
+    let outcome: string;
     try {
-      await this.notifications.record(parseOrderCreated(msg.content));
+      outcome = (await this.notifications.record(parseOrderCreated(msg.content))) ? 'processed' : 'duplicate';
       ch.ack(msg);
     } catch (err) {
-      await this.handleFailure(ch, msg, err);
+      outcome = await this.handleFailure(ch, msg, err);
     }
+    messages.add(1, { outcome });
+    processingDuration.record(Number(process.hrtime.bigint() - started) / 1e9, { outcome });
   }
 
-  private async handleFailure(ch: ConfirmChannel, msg: ConsumeMessage, err: unknown): Promise<void> {
+  // Returns the outcome for the metrics: retried | dead_lettered | dead_letter_failed.
+  private async handleFailure(ch: ConfirmChannel, msg: ConsumeMessage, err: unknown): Promise<string> {
     const cause = err instanceof Error ? err.message : String(err);
     const id = msg.properties.messageId ?? 'unknown';
     try {
-      if (err instanceof PermanentError) return await this.deadLetter(ch, msg, `permanent failure: ${cause}`);
+      if (err instanceof PermanentError) {
+        await this.deadLetter(ch, msg, `permanent failure: ${cause}`);
+        return 'dead_lettered';
+      }
       const attempts = failedAttempts(msg) + 1;
-      if (attempts >= this.maxAttempts) return await this.deadLetter(ch, msg, `gave up after ${attempts} attempts: ${cause}`);
+      if (attempts >= this.maxAttempts) {
+        await this.deadLetter(ch, msg, `gave up after ${attempts} attempts: ${cause}`);
+        return 'dead_lettered';
+      }
       this.log.warn(`notification.retry messageId=${id} attempt=${attempts}/${this.maxAttempts} cause=${cause}`);
+      ch.nack(msg, false, false);
+      return 'retried';
     } catch (dlqErr) {
       // Could not dead-letter: use the delayed retry path rather than lose the message or hot-loop on it.
       this.log.error(`notification.dead_letter_failed messageId=${id} cause=${(dlqErr as Error).message}`);
+      ch.nack(msg, false, false);
+      return 'dead_letter_failed';
     }
-    ch.nack(msg, false, false);
   }
 
   private async deadLetter(ch: ConfirmChannel, msg: ConsumeMessage, reason: string): Promise<void> {

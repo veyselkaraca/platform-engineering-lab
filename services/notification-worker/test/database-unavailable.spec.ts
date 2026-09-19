@@ -1,3 +1,5 @@
+// The metrics helper must be imported first: instruments created before a MeterProvider exists stay no-ops.
+import { metricValue } from './support/metrics';
 import { Controller, Get, INestApplication, Logger, NotFoundException, Query } from '@nestjs/common';
 import { APP_FILTER } from '@nestjs/core';
 import { Test } from '@nestjs/testing';
@@ -61,6 +63,14 @@ describe('DatabaseUnavailableFilter', () => {
     expect(res.body).toEqual({ statusCode: 503, message: 'Service temporarily unavailable', error: 'Service Unavailable' });
     expect(JSON.stringify(res.body)).not.toMatch(/postgres|ENOTFOUND/);
     expect(Logger.prototype.error).toHaveBeenCalledWith(expect.stringMatching(/^database\.unavailable requestId=req-77 cause=getaddrinfo ENOTFOUND postgres$/));
+  });
+
+  it('counts the responses it turned into 503, and nothing else', async () => {
+    const before = await metricValue('database.unavailable.responses');
+    await request(app.getHttpServer()).get('/probe?kind=outage').expect(503);
+    await request(app.getHttpServer()).get('/probe?kind=http').expect(404);
+    await request(app.getHttpServer()).get('/probe?kind=bug').expect(500);
+    expect(await metricValue('database.unavailable.responses')).toBe(before + 1);
   });
 
   it('leaves HTTP exceptions alone', async () => {

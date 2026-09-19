@@ -1,3 +1,5 @@
+// The metrics helper must be imported first: instruments created before a MeterProvider exists stay no-ops.
+import { metricValue } from './support/metrics';
 import { Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { ConfirmChannel, ConsumeMessage } from 'amqplib';
@@ -44,6 +46,49 @@ describe('failedAttempts', () => {
       ],
     };
     expect(failedAttempts(message(event, headers))).toBe(2);
+  });
+});
+
+describe('ConsumerService metrics (OB-5)', () => {
+  const outcome = (o: string) => metricValue('notification.messages', { outcome: o });
+  const timed = (o: string) => metricValue('notification.processing.duration', { outcome: o });
+
+  beforeEach(() => {
+    jest.spyOn(Logger.prototype, 'warn').mockImplementation();
+    jest.spyOn(Logger.prototype, 'error').mockImplementation();
+  });
+  afterEach(() => jest.restoreAllMocks());
+
+  it('counts processed, duplicate, retried and dead-lettered messages, and times each one', async () => {
+    const before = { processed: await outcome('processed'), duplicate: await outcome('duplicate'), retried: await outcome('retried'), dead: await outcome('dead_lettered'), timed: await timed('processed') };
+
+    const a = setup();
+    await a.consumer.handleMessage(a.channel, message(event));
+    const b = setup();
+    b.notifications.record.mockResolvedValue(false);
+    await b.consumer.handleMessage(b.channel, message(event));
+    const c = setup();
+    c.notifications.record.mockRejectedValue(new Error('db down'));
+    await c.consumer.handleMessage(c.channel, message(event));
+    const d = setup();
+    await d.consumer.handleMessage(d.channel, message('not json'));
+    const e = setup();
+    e.notifications.record.mockRejectedValue(new Error('db down'));
+    await e.consumer.handleMessage(e.channel, message(event, { 'x-death': [death(MAIN_QUEUE, 'rejected', MAX_ATTEMPTS - 1)] }));
+
+    expect(await outcome('processed')).toBe(before.processed + 1);
+    expect(await outcome('duplicate')).toBe(before.duplicate + 1);
+    expect(await outcome('retried')).toBe(before.retried + 1);
+    expect(await outcome('dead_lettered')).toBe(before.dead + 2); // malformed at once, and retries exhausted
+    expect(await timed('processed')).toBe(before.timed + 1);
+  });
+
+  it('reports a dead-letter that could not be published as its own outcome, and still retries the message', async () => {
+    const before = await outcome('dead_letter_failed');
+    const { consumer, channel, ch } = setup(new Error('confirm failed'));
+    await consumer.handleMessage(channel, message('not json'));
+    expect(await outcome('dead_letter_failed')).toBe(before + 1);
+    expect(ch.nack).toHaveBeenCalledTimes(1);
   });
 });
 

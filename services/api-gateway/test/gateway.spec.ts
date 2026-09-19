@@ -1,3 +1,5 @@
+// The metrics helper must be imported first: instruments created before a MeterProvider exists stay no-ops.
+import { metricValue } from './support/metrics';
 import express from 'express';
 import request from 'supertest';
 import { GatewayConfig, createGateway } from '../src/gateway/gateway';
@@ -175,6 +177,23 @@ describe('gateway', () => {
       await request(app).get('/v1/users/u1').set('authorization', 'Bearer garbage').expect(401);
       await request(app).get('/v1/users/u1').set('authorization', 'Bearer garbage').expect(401);
       await request(app).get('/v1/users/u1').set('authorization', 'Bearer garbage').expect(429);
+    });
+
+    it('counts refusals by reason (IDN-7)', async () => {
+      const users = await start();
+      const { app } = appWith({ routes: { '/v1/users': users.url } });
+      const before = { missing: await metricValue('auth.rejections', { reason: 'missing' }), signature: await metricValue('auth.rejections', { reason: 'signature' }), unavailable: await metricValue('auth.rejections', { reason: 'keys_unavailable' }) };
+      const stranger = await signToken(await makeKeys('evil'));
+      const broken = new TokenVerifier(() => Promise.reject(new Error('boom')), { issuer: 'x', audience: 'y', clockToleranceSeconds: 5 });
+
+      await request(app).get('/v1/users/u1').expect(401);
+      await request(app).get('/v1/users/u1').set('authorization', `Bearer ${stranger}`).expect(401);
+      await request(appWith({ routes: { '/v1/users': users.url }, verifier: broken }).app).get('/v1/users/u1').set('authorization', `Bearer ${token}`).expect(503);
+      await authed(app).get('/v1/users/u1').expect(200);
+
+      expect(await metricValue('auth.rejections', { reason: 'missing' })).toBe(before.missing + 1);
+      expect(await metricValue('auth.rejections', { reason: 'signature' })).toBe(before.signature + 1);
+      expect(await metricValue('auth.rejections', { reason: 'keys_unavailable' })).toBe(before.unavailable + 1);
     });
 
     it('logs the rejection reason and never the token', async () => {

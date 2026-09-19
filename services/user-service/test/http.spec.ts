@@ -1,3 +1,5 @@
+// The metrics helper must be imported first: instruments created before a MeterProvider exists stay no-ops.
+import { metricValue } from './support/metrics';
 import { INestApplication, Logger, ValidationPipe } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
 import { Test } from '@nestjs/testing';
@@ -74,7 +76,9 @@ describe('HTTP layer', () => {
       }).compile();
       const a = mod.createNestApplication();
       await a.init();
+      const before = await metricValue('auth.rejections', { reason: 'keys_unavailable' });
       await request(a.getHttpServer()).get(`/v1/users/${CUSTOMER_ID}`).set(bearer(customer)).expect(503);
+      expect(await metricValue('auth.rejections', { reason: 'keys_unavailable' })).toBe(before + 1);
       await a.close();
     });
 
@@ -92,6 +96,28 @@ describe('HTTP layer', () => {
       expect(logged).not.toContain(forged.slice(0, 20));
       expect(logged).not.toContain(customer.slice(0, 20));
       expect(logged.toLowerCase()).not.toContain('bearer');
+    });
+  });
+
+  describe('metrics (IDN-7)', () => {
+    const rejected = (reason: string) => metricValue('auth.rejections', { reason });
+
+    it('counts refusals by reason, without user ids or routes as labels', async () => {
+      const before = { missing: await rejected('missing'), role: await rejected('role'), notOwner: await rejected('not_owner'), signature: await rejected('signature') };
+      await http().get(`/v1/users/${CUSTOMER_ID}`).expect(401);
+      await http().post('/v1/users').set(bearer(customer)).send(newUser).expect(403);
+      await http().get(`/v1/users/${ADMIN_ID}`).set(bearer(customer)).expect(403);
+      await http().get(`/v1/users/${CUSTOMER_ID}`).set(bearer(await signToken(await makeKeys('evil')))).expect(401);
+      expect(await rejected('missing')).toBe(before.missing + 1);
+      expect(await rejected('role')).toBe(before.role + 1);
+      expect(await rejected('not_owner')).toBe(before.notOwner + 1);
+      expect(await rejected('signature')).toBe(before.signature + 1);
+    });
+
+    it('does not count accepted requests', async () => {
+      const before = await metricValue('auth.rejections');
+      await http().get(`/v1/users/${CUSTOMER_ID}`).set(bearer(customer)).expect(200);
+      expect(await metricValue('auth.rejections')).toBe(before);
     });
   });
 

@@ -1,0 +1,12 @@
+# Loads every dashboard JSON under /var/lib/grafana/dashboards (mounted from observability/grafana/dashboards).
+apiVersion: 1
+
+providers:
+  - name: platform-lab
+    orgId: 1
+    type: file
+    disableDeletion: true
+    allowUiUpdates: false
+    updateIntervalSeconds: 30
+    options:
+      path: /var/lib/grafana/dashboards

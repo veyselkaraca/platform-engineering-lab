@@ -6,6 +6,7 @@ import { remoteKeys, TokenVerifier } from './auth/token-verifier';
 import { Env, validateEnv } from './config/env';
 import { createGateway } from './gateway/gateway';
 import { HealthController } from './health/health.controller';
+import { TelemetryLifecycle } from './telemetry.lifecycle';
 
 @Module({
   imports: [
@@ -28,6 +29,7 @@ import { HealthController } from './health/health.controller';
     }),
   ],
   controllers: [HealthController],
+  providers: [TelemetryLifecycle],
 })
 export class AppModule implements NestModule {
   private readonly log = new Logger('Gateway');

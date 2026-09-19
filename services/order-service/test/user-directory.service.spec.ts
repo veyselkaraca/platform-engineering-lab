@@ -1,3 +1,5 @@
+// The metrics helper must be imported first: instruments created before a MeterProvider exists stay no-ops.
+import { metricValue } from './support/metrics';
 import { Logger, ServiceUnavailableException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { CacheService } from '../src/infra/cache.service';
@@ -44,6 +46,24 @@ describe('UserDirectory', () => {
     fetchMock.mockResolvedValue(respond(200));
     await setup().directory.exists('u1', 'req-42');
     expect(fetchMock.mock.calls[0][1].headers).toEqual({ 'x-request-id': 'req-42' });
+  });
+
+  it('counts lookups by outcome', async () => {
+    const outcome = (o: string) => metricValue('user.lookups', { outcome: o });
+    const before = { hit: await outcome('cache_hit'), found: await outcome('found'), missing: await outcome('not_found'), down: await outcome('unavailable') };
+
+    await setup('1').directory.exists('u1', 'req-1');
+    fetchMock.mockResolvedValueOnce(respond(200));
+    await setup().directory.exists('u1', 'req-1');
+    fetchMock.mockResolvedValueOnce(respond(404));
+    await setup().directory.exists('u2', 'req-1');
+    fetchMock.mockResolvedValue(respond(500));
+    await expect(setup().directory.exists('u3', 'req-1')).rejects.toBeInstanceOf(ServiceUnavailableException);
+
+    expect(await outcome('cache_hit')).toBe(before.hit + 1);
+    expect(await outcome('found')).toBe(before.found + 1);
+    expect(await outcome('not_found')).toBe(before.missing + 1);
+    expect(await outcome('unavailable')).toBe(before.down + 1);
   });
 
   it('forwards the caller authorization header so user-service can authorize the lookup', async () => {

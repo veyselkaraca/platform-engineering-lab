@@ -1,3 +1,4 @@
+import './telemetry'; // must stay first: instruments modules as they load
 import { NestFactory } from '@nestjs/core';
 import { ConfigService } from '@nestjs/config';
 import { NestExpressApplication } from '@nestjs/platform-express';

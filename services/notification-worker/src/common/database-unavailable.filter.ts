@@ -1,5 +1,6 @@
 import { ArgumentsHost, Catch, HttpException, Logger, ServiceUnavailableException } from '@nestjs/common';
 import { BaseExceptionFilter } from '@nestjs/core';
+import { recordDatabaseUnavailable } from './database.metrics';
 
 // Errors that mean "cannot reach the database" (DNS, refused or reset connection, timeout, server shutting down,
 // too many connections, connection exceptions), as opposed to a query that is wrong or violates a constraint.
@@ -27,6 +28,7 @@ export class DatabaseUnavailableFilter extends BaseExceptionFilter {
     if (!(exception instanceof HttpException) && isDatabaseUnavailable(exception)) {
       const req = host.switchToHttp().getRequest<{ id?: string | number; headers: Record<string, unknown> }>();
       const requestId = String(req.id ?? req.headers['x-request-id'] ?? 'unknown');
+      recordDatabaseUnavailable();
       this.log.error(`database.unavailable requestId=${requestId} cause=${(exception as Error).message}`);
       return super.catch(new ServiceUnavailableException('Service temporarily unavailable'), host);
     }

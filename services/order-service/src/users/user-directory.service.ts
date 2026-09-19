@@ -2,6 +2,7 @@ import { Injectable, Logger, ServiceUnavailableException } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config';
 import { Env } from '../config/env';
 import { CacheService } from '../infra/cache.service';
+import { userLookups } from '../orders/orders.metrics';
 
 const ATTEMPTS = 2; // one retry, GET only (safe to repeat)
 
@@ -19,8 +20,12 @@ export class UserDirectory {
   // (self or admin), so no service-to-service credential is needed. It is forwarded, never logged or cached.
   async exists(userId: string, requestId: string, authorization?: string): Promise<boolean> {
     const key = `user:${userId}`;
-    if (await this.cache.get(key)) return true;
+    if (await this.cache.get(key)) {
+      userLookups.add(1, { outcome: 'cache_hit' });
+      return true;
+    }
     const found = await this.fetchExists(userId, requestId, authorization);
+    userLookups.add(1, { outcome: found ? 'found' : 'not_found' });
     // Only positive answers are cached: a user created a moment later must not stay "missing" for the TTL.
     if (found) await this.cache.set(key, '1', this.config.get('USER_CACHE_TTL_SECONDS'));
     return found;
@@ -44,6 +49,7 @@ export class UserDirectory {
         cause = (err as Error).message;
       }
     }
+    userLookups.add(1, { outcome: 'unavailable' });
     this.log.error(`user lookup failed requestId=${requestId} cause=${cause}`);
     throw new ServiceUnavailableException('User lookup is temporarily unavailable');
   }

@@ -1,5 +1,6 @@
 import { createParamDecorator, ExecutionContext, ForbiddenException, Logger, SetMetadata } from '@nestjs/common';
 import type { Request } from 'express';
+import { recordAuthRejection } from './auth.metrics';
 import { Principal } from './token-verifier';
 
 export const IS_PUBLIC = 'auth:public';
@@ -23,6 +24,7 @@ const log = new Logger('auth');
 // Decided from ids the caller supplied, so a 403 reveals nothing about stored data.
 export function assertSelfOrAdmin(principal: Principal, userId: string): void {
   if (isAdmin(principal) || principal.sub === userId.toLowerCase()) return;
+  recordAuthRejection('not_owner');
   log.warn(`auth.forbidden sub=${principal.sub} reason=not_owner`);
   throw new ForbiddenException('Forbidden');
 }

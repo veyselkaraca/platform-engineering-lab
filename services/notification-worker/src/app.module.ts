@@ -6,6 +6,7 @@ import { TerminusModule } from '@nestjs/terminus';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { LoggerModule } from 'nestjs-pino';
 import { AuthModule } from './auth/auth.module';
+import { TelemetryLifecycle } from './telemetry.lifecycle';
 import { DatabaseUnavailableFilter } from './common/database-unavailable.filter';
 import { Env, validateEnv } from './config/env';
 import { HealthController } from './health/health.controller';
@@ -51,6 +52,6 @@ import { NotificationsService } from './notifications/notifications.service';
     AuthModule,
   ],
   controllers: [HealthController, NotificationsController],
-  providers: [NotificationsService, ConsumerService, { provide: APP_FILTER, useClass: DatabaseUnavailableFilter }],
+  providers: [NotificationsService, ConsumerService, { provide: APP_FILTER, useClass: DatabaseUnavailableFilter }, TelemetryLifecycle],
 })
 export class AppModule {}
