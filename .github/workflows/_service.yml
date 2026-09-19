@@ -1,5 +1,5 @@
 # Reusable pipeline shared by every service (called from <service>.yml).
-# Validate -> Test -> Analyze -> Scan -> Build -> Verify -> Publish
+# Validate -> Test -> Analyze (Sonar gate, CodeQL) -> Scan -> Build -> Verify -> Publish
 name: service pipeline
 
 on:
@@ -43,7 +43,34 @@ jobs:
       # Dependency scan gate: fails on high/critical advisories.
       - run: npm audit --audit-level=high
 
-  # SAST
+  # Static analysis quality gate (ADR-002): a throwaway SonarQube from the compose `quality` profile runs on the
+  # runner; a failed gate fails the pipeline, so no image is built from code that did not pass.
+  sonar:
+    runs-on: ubuntu-latest
+    env:
+      SERVICE: ${{ inputs.service }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: services/${{ inputs.service }}/package-lock.json
+      - name: Unit tests with coverage
+        working-directory: services/${{ inputs.service }}
+        run: |
+          npm ci
+          npm test -- --coverage --coverageReporters=lcov
+      - run: sh scripts/bootstrap.sh
+      - name: Start SonarQube
+        run: docker compose -f infrastructure/docker/docker-compose.yml --profile quality up -d --wait sonarqube
+      - name: Analyze (fails when the quality gate fails)
+        run: sh security/sonar/analyze.sh "$SERVICE"
+      - name: Dump SonarQube logs on failure
+        if: failure()
+        run: docker compose -f infrastructure/docker/docker-compose.yml logs --no-color --tail 200 sonarqube || true
+
+  # SAST, second layer: reports to the Security tab and does not gate (ADR-002).
   codeql:
     runs-on: ubuntu-latest
     permissions:
@@ -56,11 +83,12 @@ jobs:
         with:
           languages: javascript-typescript
           build-mode: none
+          config-file: ./security/sast/codeql-config.yml
       - uses: github/codeql-action/analyze@v3
 
   # Build once -> scan -> smoke test -> publish the SAME image (never rebuilt).
   image:
-    needs: [verify, codeql]
+    needs: [verify, sonar, codeql]
     runs-on: ubuntu-latest
     permissions:
       contents: read

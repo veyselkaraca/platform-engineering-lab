@@ -26,3 +26,6 @@ Thumbs.db
 .vscode/*
 !.vscode/launch.json
 *.log
+
+# SonarQube scanner working dir
+.scannerwork/
