@@ -29,7 +29,7 @@ Sync (HTTP) and async (RabbitMQ) paths are kept distinct on purpose: the sync pa
 | user-service | Owns user data (records keyed by the Keycloak `sub`) | PostgreSQL; Keycloak keys (cached) for token checks | Readiness fails and traffic is removed; while it is unreachable the gateway answers 502 for `/v1/users` |
 | order-service | Owns orders, emits events | PostgreSQL, user-service, RabbitMQ; Redis optional | Redis down → falls back to user-service; RabbitMQ down → order accepted, publish failure logged and alerted (see ADR-001 limitation); user-service down → 503 |
 | notification-worker | Async consumer with retry/DLQ | RabbitMQ, PostgreSQL | Message retried with bound, then dead-lettered; healthy messages are not blocked |
-| PostgreSQL | Persistent state, one DB per service | — | Dependent services fail readiness |
+| PostgreSQL | Persistent state, one DB per service | — | Dependent services fail readiness (traffic removed, no restart) and answer `503` meanwhile; they recover by themselves when it returns |
 | Redis | Cache only | — | Degrades latency, not correctness |
 | RabbitMQ | Async events | — | Publish/consume degrade; queue depth is alerted |
 | Keycloak | Central identity (realm `platform-lab`, see `security/keycloak/README.md`) | PostgreSQL (its own database) | New logins fail; already-issued tokens keep validating while a service's key cache is warm (default 1 h); after that, and on a cold start, protected endpoints answer 503 (fail closed) while health stays green. Runbook: `docs/operations/runbooks/keycloak-outage.md` |

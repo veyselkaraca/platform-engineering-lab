@@ -67,7 +67,7 @@ Full stack (from the repo root): `sh scripts/bootstrap.sh`, `docker compose -f i
 
 - **Why it exists / owns:** asynchronous notification handling; nothing else writes to its database.
 - **Depends on:** PostgreSQL and RabbitMQ (both hard for readiness).
-- **On failure:** DB down -> readiness fails, messages retry and then dead-letter after `MAX_ATTEMPTS`. Broker down -> readiness fails, worker reconnects by itself. Poison message -> DLQ, other messages unaffected.
+- **On failure:** DB down -> readiness fails, HTTP requests get a generic `503`, messages retry and then dead-letter after `MAX_ATTEMPTS`. Broker down -> readiness fails, worker reconnects by itself. Poison message -> DLQ, other messages unaffected.
 - **Observed:** JSON logs with `notification.sent`, `notification.duplicate_ignored`, `notification.retry`, `notification.dead_lettered` lines carrying `eventId`/`messageId` and `correlationId` (the originating `x-request-id`). Metrics (processed/failed/dead-lettered counts, queue depth) arrive with the observability slice.
 - **Image:** multi-stage, non-root, `HEALTHCHECK`, npm removed from the runtime stage, tag `notification-worker:<commit-sha>`.
 - **CI:** `.github/workflows/notification-worker.yml` (shared `_service.yml`); the smoke test creates an order and waits for its notification.

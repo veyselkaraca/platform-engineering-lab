@@ -11,7 +11,7 @@ Layers follow AGENTS.md §12.5. Failure scenarios follow §28: for each, record 
 | Contract (`tests/contract`) | order-service ↔ user-service HTTP (`order-user-lookup.test.mjs`), and the `order.created` event schema as really published (`order-created-event.test.mjs`) |
 | E2E (`tests/e2e`) | Token from Keycloak → gateway → order → notification stored; one trace id across services |
 | Smoke (`scripts/smoke-test.sh`) | Post-deploy: health endpoints, one create-order round trip |
-| Chaos (`tests/chaos`) | Scenarios below: `broker-failures.chaos.mjs` (async path, DB and broker outages, graceful stop), `dependency-failures.chaos.mjs` (Redis and user-service outages) and `keycloak-outage.sh` |
+| Chaos (`tests/chaos`) | Scenarios below: `broker-failures.chaos.mjs` (async path, DB and broker outages, graceful stop), `dependency-failures.chaos.mjs` (Redis and user-service outages), `database-failures.chaos.mjs` (PostgreSQL outage) and `keycloak-outage.sh` |
 
 ## Requirement traceability
 
@@ -44,7 +44,7 @@ Layers follow AGENTS.md §12.5. Failure scenarios follow §28: for each, record 
 
 ## Results (as built, 2026-09-19)
 
-Run with the stack up: `node --test --test-concurrency=1 "tests/**/*.test.mjs"` (integration, contract, e2e; 64 tests) and, on purpose because it is disruptive, `node --test --test-concurrency=1 tests/chaos/broker-failures.chaos.mjs tests/chaos/dependency-failures.chaos.mjs` (9 scenarios, about three and a half minutes). Broker access is through RabbitMQ's management API, so the tests need nothing installed.
+Run with the stack up: `node --test --test-concurrency=1 "tests/**/*.test.mjs"` (integration, contract, e2e; 64 tests) and, on purpose because it is disruptive, `node --test --test-concurrency=1 tests/chaos/broker-failures.chaos.mjs tests/chaos/dependency-failures.chaos.mjs tests/chaos/database-failures.chaos.mjs` (10 scenarios, about four minutes). Broker access is through RabbitMQ's management API, so the tests need nothing installed.
 
 | Requirement / scenario | Verified by | Result |
 |---|---|---|
@@ -58,8 +58,11 @@ Run with the stack up: `node --test --test-concurrency=1 "tests/**/*.test.mjs"` 
 | NFR-6 graceful shutdown | Chaos: SIGTERM while 3000 messages are being consumed: exit code 0 (not killed), nothing lost, no duplicates, queue empty afterwards | pass |
 | NFR-4 Redis down | `dependency-failures.chaos.mjs`: with Redis stopped, four orders in a row succeed (201) each in under 4 s through the user-service fallback, readiness stays green, the outage is exactly one warning line (not one per request or reconnect attempt), the event still reaches the worker; when Redis returns the log says so and caching resumes without a restart | pass |
 | user-service down | Same file: a user that was cached keeps ordering; an uncached user gets `503` in under 8 s (2 s lookup timeout, one retry) with no internals in the body, `user lookup failed requestId=...` logged with the response's request id, and no order stored; through the gateway only `/v1/users` breaks (`502`, no upstream address), reading an order still works, gateway and order-service readiness stay green; after `user-service` returns, ordering works again without restarting anything | pass |
+| PostgreSQL down (any service) | `database-failures.chaos.mjs`: readiness of user-service, order-service and notification-worker turns 503 while liveness stays 200 and the gateway stays ready; every business request (read, write, through the gateway) answers a clean `503` in under 10 s with no host names or SQL in the body and a `database.unavailable requestId=...` log line; authentication (`401`/`403`) still works because it does not need the database; when PostgreSQL returns, readiness and requests recover and no service container was restarted (compared by start time) | pass, after a fix (below) |
 | Recovery of the rest of the stack | Chaos: after the database and broker were stopped, every service is ready again without a restart and the smoke test passes | pass |
+
+**Defect found and fixed by the PostgreSQL scenario:** with the database down, business requests answered `500 Internal server error` after about four seconds, not the `503` this plan and the API rules call for. The three services that own a database now map database-unavailable errors (DNS, refused/reset connection, timeouts, server shutdown, connection exceptions) to a generic `503` through a global exception filter (`src/common/database-unavailable.filter.ts`, unit-tested including the cases that must stay 500) and set an explicit connect timeout of 2 s. Queries themselves still have no timeout; a database that accepts connections and then stalls is not covered.
 
 Mutation checks: removing `enableShutdownHooks()` from the worker makes the graceful-shutdown scenario fail (exit code 137 instead of 0); making the cache rethrow its errors makes the Redis scenario fail on the first order (a cache outage would fail order creation); see also the `insert` versus `save` check in the identity-keycloak TEST-PLAN.
 
-Gaps: the PostgreSQL outage of user-service/order-service themselves (readiness turning red and traffic removal) is only exercised indirectly, through the worker's database; no metrics assertions until the observability slice; the workflow that runs these in CI (`platform-tests.yml`) has not run on GitHub yet.
+Gaps: query-level timeouts (a stalled but connected database); no metrics assertions until the observability slice; the workflow that runs these in CI (`platform-tests.yml`) has not run on GitHub yet.
