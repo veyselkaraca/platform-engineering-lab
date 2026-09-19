@@ -4,6 +4,8 @@
 #   warm cache : a service that already fetched the keys keeps accepting valid tokens
 #   cold start : a service restarted while Keycloak is down stays live and ready but fails closed (503), never open
 #   recovery   : once Keycloak is back the same service accepts tokens again, without a restart
+#   expiry     : with a short key-cache TTL (5 s), a warm service turns to 503 once the cache expires while Keycloak is
+#                still down; the default TTL (1 h) is restored afterwards
 # Usage: keycloak-outage.sh [user-service-url] [keycloak-url]
 set -eu
 cd "$(dirname "$0")/../.."
@@ -23,10 +25,15 @@ wait_for() { # <description> <url> <status>
   done
 }
 
-trap '$COMPOSE start keycloak >/dev/null 2>&1 || true' EXIT
+# Always leave the stack as found: Keycloak running, user-service on its default key-cache TTL.
+trap '$COMPOSE start keycloak >/dev/null 2>&1 || true; $COMPOSE up -d --no-deps --wait user-service >/dev/null 2>&1 || true' EXIT
 
-TOKEN=$(curl -fsS -d grant_type=password -d client_id=platform-lab-dev -d username=dev-admin -d password=dev-admin-fake-password \
-  "$KEYCLOAK_URL/realms/platform-lab/protocol/openid-connect/token" | sed -n 's/.*"access_token":"\([^"]*\)".*/\1/p')
+fresh_token() {
+  curl -fsS -d grant_type=password -d client_id=platform-lab-dev -d username=dev-admin -d password=dev-admin-fake-password \
+    "$KEYCLOAK_URL/realms/platform-lab/protocol/openid-connect/token" | sed -n 's/.*"access_token":"\([^"]*\)".*/\1/p'
+}
+
+TOKEN=$(fresh_token)
 [ -n "$TOKEN" ] || { echo "chaos FAILED: no token (is the stack up?)" >&2; exit 1; }
 ADMIN_ID=c0ffee00-0000-4000-8000-000000000002
 call() { status -H "authorization: Bearer $TOKEN" "$USER_URL/v1/users/$ADMIN_ID"; }
@@ -59,3 +66,14 @@ until [ "$(call)" = "$warm" ]; do
   sleep 2
 done
 echo "chaos OK: recovered without restarting user-service"
+
+echo "chaos: key-cache expiry (user-service recreated with AUTH_JWKS_CACHE_SECONDS=5)"
+AUTH_JWKS_CACHE_SECONDS=5 $COMPOSE up -d --no-deps --wait user-service >/dev/null
+TOKEN=$(fresh_token)
+expect "$(call)" "$warm" "warm call before the outage (short TTL)"
+$COMPOSE stop keycloak >/dev/null
+expect "$(call)" "$warm" "still inside the 5 s cache window"
+sleep 7
+expect "$(call)" 503 "after the cache expired with Keycloak still down"
+expect "$(status "$USER_URL/health/ready")" 200 "readiness after cache expiry"
+echo "chaos OK: expired cache fails closed, health stays green"

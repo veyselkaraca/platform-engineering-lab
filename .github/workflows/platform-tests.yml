@@ -1,0 +1,59 @@
+# Cross-service tests against the whole compose stack: integration, contract and end to end
+# (tests/{integration,contract,e2e}, Node's built-in test runner, no dependencies). The per-service pipelines
+# prove one image at a time; this one proves the services work together with Keycloak, PostgreSQL, Redis and RabbitMQ.
+name: platform tests
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "services/**"
+      - "infrastructure/docker/**"
+      - "messaging/rabbitmq/**"
+      - "security/keycloak/**"
+      - "tests/**"
+      - ".github/workflows/platform-tests.yml"
+  pull_request:
+    paths:
+      - "services/**"
+      - "infrastructure/docker/**"
+      - "messaging/rabbitmq/**"
+      - "security/keycloak/**"
+      - "tests/**"
+      - ".github/workflows/platform-tests.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: platform-tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  stack:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Start the stack
+        run: |
+          sh scripts/bootstrap.sh
+          docker compose -f infrastructure/docker/docker-compose.yml up -d --build --wait
+
+      - name: Integration, contract and end-to-end tests
+        run: node --test "tests/**/*.test.mjs"
+
+      - name: Keycloak outage behavior
+        run: sh tests/chaos/keycloak-outage.sh
+
+      - name: Dump compose logs on failure
+        if: failure()
+        run: docker compose -f infrastructure/docker/docker-compose.yml logs --no-color || true
+
+      - name: Stop the stack
+        if: always()
+        run: docker compose -f infrastructure/docker/docker-compose.yml down -v

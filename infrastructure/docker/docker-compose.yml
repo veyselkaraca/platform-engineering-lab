@@ -11,6 +11,7 @@ x-auth-env: &auth-env
   AUTH_ISSUER: http://localhost:${KEYCLOAK_HOST_PORT:-8081}/realms/platform-lab
   AUTH_AUDIENCE: platform-api
   AUTH_JWKS_URL: http://keycloak:8080/realms/platform-lab/protocol/openid-connect/certs
+  AUTH_JWKS_CACHE_SECONDS: ${AUTH_JWKS_CACHE_SECONDS:-3600}
 
 services:
   postgres:
