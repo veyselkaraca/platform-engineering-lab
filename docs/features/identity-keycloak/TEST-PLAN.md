@@ -149,7 +149,7 @@ Scripted in `tests/chaos/keycloak-outage.sh`, which also runs the "past TTL" cas
 The stack must be up (`docker compose -f infrastructure/docker/docker-compose.yml up -d --build --wait`), then from the repo root:
 
 ```bash
-node --test --test-reporter=spec "tests/**/*.test.mjs"
+node --test --test-concurrency=1 --test-reporter=spec "tests/**/*.test.mjs"
 sh tests/chaos/keycloak-outage.sh
 ```
 

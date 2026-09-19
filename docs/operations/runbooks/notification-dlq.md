@@ -36,7 +36,8 @@ Messages that still fail return to the DLQ after their retries. Repeated failure
 
 ```bash
 docker compose -f infrastructure/docker/docker-compose.yml exec -T rabbitmq rabbitmqctl -q list_queues name messages
-curl -s "http://localhost:3003/v1/notifications?orderId=<order id>"
+# needs a bearer token (an admin sees every notification); see security/keycloak/README.md for getting one
+curl -s -H "authorization: Bearer $TOKEN" "http://localhost:3003/v1/notifications?orderId=<order id>"
 ```
 
 The DLQ depth drops to the number of messages that are genuinely poison, and the notification for the order exists.
@@ -47,5 +48,6 @@ Only after the producer is fixed and the message is understood: purge it in the 
 
 ## Related
 
+- This procedure (retry, dead-lettering with reason headers, `scripts/replay-dlq.sh`) is exercised against the real stack by `tests/chaos/broker-failures.chaos.mjs`.
 - Worker README: `services/notification-worker/README.md`
 - Failure scenarios verified for this component: `docs/features/order-notification/TEST-PLAN.md`

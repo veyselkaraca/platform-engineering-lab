@@ -28,4 +28,6 @@ Attempt counting (from the `x-death` header) and the move to the DLQ are the con
 
 `enabled_plugins` adds `rabbitmq_shovel` (and its management plugin) on top of the image defaults; the replay script uses a one-off dynamic shovel because it is the loss-safe way to move messages between queues.
 
+Verification against the real broker: `tests/contract/order-created-event.test.mjs` (what order-service publishes), `tests/integration/notification-consumer.test.mjs` (consumer, poison messages) and `tests/chaos/broker-failures.chaos.mjs` (retry, DLQ, replay, restarts). They use the management API on `localhost:15672`.
+
 Failure/rollback: removing an object is a definitions change plus a broker restart with an empty data volume in dev; in shared environments delete the queue only after it is empty.
