@@ -86,4 +86,4 @@ Remaining gaps, stated plainly:
 - `src/telemetry.ts` has no unit test (see above); a broken bootstrap would show up in the live pipeline test.
 - Tempo/Loki outages and the `OrderEventsNotPublished` alert are rule-tested but not fired live.
 - Log records include the full pino `req`/`res` objects as attributes, which is noisy in Loki; only the redaction is verified, not a trimmed schema.
-- The new CI workflow steps (`platform-tests.yml`) have not run on GitHub; they were checked with actionlint and by running each command locally.
+- The CI workflow steps (`platform-tests.yml`) pass on GitHub Actions. The first hosted runs found two things the local runs hid: the Redis user cache can hide user-service from a trace (the pipeline test now uses a fresh user), and `httpcheck_status` had a stale series after a slow start (the collector drops `http.status_code`).

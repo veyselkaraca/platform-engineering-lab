@@ -66,4 +66,4 @@ Run with the stack up: `node --test --test-concurrency=1 "tests/**/*.test.mjs"` 
 
 Mutation checks: removing `enableShutdownHooks()` from the worker makes the graceful-shutdown scenario fail (exit code 137 instead of 0); making the cache rethrow its errors makes the Redis scenario fail on the first order (a cache outage would fail order creation); see also the `insert` versus `save` check in the identity-keycloak TEST-PLAN.
 
-Gaps: query-level timeouts (a stalled but connected database); metrics are asserted by the observability tests, not by these scenarios; the workflow that runs these in CI (`platform-tests.yml`) has not run on GitHub yet.
+Gaps: query-level timeouts (a stalled but connected database); metrics are asserted by the observability tests, not by these scenarios; the workflow that runs these in CI (`platform-tests.yml`) passes on GitHub Actions.

@@ -174,7 +174,7 @@ Node's built-in runner, no dependencies. They also run in CI (`.github/workflows
 
 Remaining gaps, stated plainly:
 
-- The tests need the whole stack, so they are not part of the per-service unit runs; they have their own workflow. That workflow, like the others, has not run on GitHub yet (no push); it was checked with actionlint and its commands were run locally.
+- The tests need the whole stack, so they are not part of the per-service unit runs; they have their own workflow. That workflow passes on GitHub Actions (hosted runner), including the chaos steps.
 - The **`order.created` event schema** contract and the consumer's broker behavior (retry, DLQ, reconnect) are still verified by hand, as before this feature; the new tests only cover HTTP and identity.
 - **Secret scanning in CI** (IDN-1) waits for the SAST/dependency-scan slice; gitleaks was run once locally (result above) and the static checks assert the sample env and dev realm only contain placeholder values.
 - **Metrics** (IDN-7): done by the observability slice. Every refusal is counted as `auth_rejections_total{reason}` in all four services (unit-tested per service and seen in Prometheus by the pipeline test); the `AuthenticationKeysUnavailable` alert covers the Keycloak-keys case.
