@@ -1,5 +1,5 @@
 # Reusable pipeline shared by every service (called from <service>.yml).
-# Validate -> Test -> Analyze -> Scan -> Build -> Verify -> Publish
+# Validate -> Test -> Analyze (lint, CodeQL gate) -> Scan -> Build -> Verify -> Publish
 name: service pipeline
 
 on:
@@ -43,7 +43,7 @@ jobs:
       # Dependency scan gate: fails on high/critical advisories.
       - run: npm audit --audit-level=high
 
-  # SAST
+  # SAST (ADR-002): findings go to the Security tab and any high/critical one fails the pipeline.
   codeql:
     runs-on: ubuntu-latest
     permissions:
@@ -56,7 +56,15 @@ jobs:
         with:
           languages: javascript-typescript
           build-mode: none
+          config-file: ./security/sast/codeql-config.yml
       - uses: github/codeql-action/analyze@v3
+        with:
+          output: sarif-results
+      - name: Test the gate
+        run: node --test security/sast/gate.test.mjs
+      # analyze uploads the results but never fails on them; this step is the gate.
+      - name: Fail on high/critical findings
+        run: node security/sast/gate.mjs sarif-results/*.sarif
 
   # Build once -> scan -> smoke test -> publish the SAME image (never rebuilt).
   image:

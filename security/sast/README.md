@@ -1,5 +1,13 @@
-# CodeQL (second layer, non-blocking)
+# CodeQL (SAST, blocking)
 
-CodeQL runs in `.github/workflows/_service.yml` and reports data-flow findings to the repository Security tab. It does not fail the build: the single blocking gate is SonarQube (see [security/sonar](../sonar/README.md)). Rationale: [ADR-002](../../docs/decisions/ADR-002-static-analysis.md). Overview: [docs/security/static-analysis.md](../../docs/security/static-analysis.md).
+CodeQL is the static analysis step of every service pipeline (`.github/workflows/_service.yml`, job `codeql`). It reports to the repository Security tab and fails the pipeline on any unsuppressed finding with a security-severity of 7.0 or higher (high, critical). Rationale: [ADR-002](../../docs/decisions/ADR-002-static-analysis.md). How it works and what to do when it fails: [docs/security/static-analysis.md](../../docs/security/static-analysis.md).
 
-The CodeQL configuration file (`codeql-config.yml`: query suite and paths to ignore, such as `node_modules` and `dist`) lives here and is referenced by the workflow's `config-file` input. Implementation is tracked in [issue #2](https://github.com/veyselkaraca/platform-engineering-lab/issues/2).
+| File | Purpose |
+|---|---|
+| `codeql-config.yml` | Query suite (`security-extended`) and ignored paths; the workflow's `config-file` |
+| `gate.mjs` | Reads the SARIF that `analyze` writes and exits 1 on a blocking finding (no dependencies, fails closed) |
+| `gate.test.mjs` | Test of the gate; the pipeline runs it before the gate |
+
+```bash
+node --test security/sast/gate.test.mjs
+```
