@@ -12,7 +12,7 @@ The three scanners in the pipeline fail at the same level:
 
 | Check | Where | Fails on |
 |---|---|---|
-| Dependency advisories | `verify`: `npm audit --audit-level=high` | high, critical |
+| Dependency advisories | `verify`: `npm audit --json` + `security/dependency-scan/gate.mjs` ([details](dependency-scanning.md)) | fixable high, critical, unless excepted |
 | Static analysis (SAST) | `codeql`: CodeQL + `security/sast/gate.mjs` | security-severity >= 7.0 (high, critical) |
 | Image vulnerabilities | `image`: Trivy `--severity HIGH,CRITICAL --ignore-unfixed` | fixable high, critical |
 
