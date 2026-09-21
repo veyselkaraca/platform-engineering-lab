@@ -5,16 +5,7 @@ name: platform tests
 
 on:
   push:
-    branches: [main]
-    paths:
-      - "services/**"
-      - "infrastructure/docker/**"
-      - "messaging/rabbitmq/**"
-      - "security/keycloak/**"
-      - "observability/**"
-      - "tests/**"
-      - ".github/workflows/platform-tests.yml"
-  pull_request:
+    branches: ['**']
     paths:
       - "services/**"
       - "infrastructure/docker/**"
@@ -30,7 +21,7 @@ permissions:
 
 concurrency:
   group: platform-tests-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
   stack:

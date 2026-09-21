@@ -2,21 +2,7 @@ name: notification-worker
 
 on:
   push:
-    branches: [main]
-    paths:
-      - "services/notification-worker/**"
-      - "infrastructure/docker/**"
-      - "messaging/rabbitmq/**"
-      - "security/keycloak/**"
-      - "security/sast/**"
-      - "security/dependency-scan/**"
-      - "security/image-scan/**"
-      - "security/secret-scan/**"
-      - "scripts/**"
-      - ".github/workflows/notification-worker.yml"
-      - ".github/workflows/_service.yml"
-      - ".github/workflows/secret-scan.yml"
-  pull_request:
+    branches: ['**']
     paths:
       - "services/notification-worker/**"
       - "infrastructure/docker/**"
@@ -37,7 +23,7 @@ permissions:
 
 concurrency:
   group: notification-worker-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
   pipeline:
