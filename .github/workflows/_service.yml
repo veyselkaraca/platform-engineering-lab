@@ -1,5 +1,5 @@
 # Reusable pipeline shared by every service (called from <service>.yml).
-# Validate -> Test -> Analyze (lint, CodeQL gate) -> Scan -> Build -> Verify -> Publish
+# Validate -> Test -> Analyze (lint, CodeQL gate) -> Scan (dependency gate, image) -> Build -> Verify -> Publish
 name: service pipeline
 
 on:
@@ -23,7 +23,7 @@ permissions:
   contents: read
 
 jobs:
-  # Validate + Test + Analyze (lint) + dependency scan
+  # Validate + Test + Analyze (lint) + dependency scan (gate in security/dependency-scan/)
   verify:
     runs-on: ubuntu-latest
     defaults:
@@ -40,8 +40,17 @@ jobs:
       - run: npm run lint
       - run: npm test
       - run: npm run build
-      # Dependency scan gate: fails on high/critical advisories.
-      - run: npm audit --audit-level=high
+      # Dependency scan gate (#3): fails on fixable high/critical advisories without a valid, unexpired exception.
+      - name: Test the dependency gate
+        working-directory: .
+        run: node --test security/dependency-scan/gate.test.mjs
+      # The exit code of npm audit is ignored on purpose: the gate decides and fails closed on an audit error.
+      - name: Audit dependencies
+        run: npm audit --json > "$RUNNER_TEMP/audit.json" || true
+      - name: Fail on fixable high/critical advisories
+        env:
+          SERVICE: ${{ inputs.service }}
+        run: node ../../security/dependency-scan/gate.mjs "$RUNNER_TEMP/audit.json"
 
   # SAST (ADR-002): findings go to the Security tab and any high/critical one fails the pipeline.
   codeql:
