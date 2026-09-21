@@ -105,13 +105,16 @@ jobs:
           cache-from: type=gha,scope=${{ inputs.service }}
           cache-to: type=gha,mode=max,scope=${{ inputs.service }}
 
-      # Image scan gate: fails on fixable high/critical vulnerabilities.
+      # Image scan gate (#4): fails on fixable high/critical vulnerabilities and on high/critical secrets in the image.
+      # Accepted findings live in security/image-scan/.trivyignore (reason + expiry per entry).
       - name: Scan image
         uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: ${{ env.IMAGE }}:${{ github.sha }}
+          scanners: vuln,secret
           severity: HIGH,CRITICAL
           ignore-unfixed: true
+          trivyignores: security/image-scan/.trivyignore
           exit-code: "1"
 
       # Verify the built artifact in the same runtime local development uses (docker compose).

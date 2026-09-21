@@ -1,0 +1,9 @@
+# Accepted image findings for the Trivy scan in .github/workflows/_service.yml.
+# Empty on purpose: every entry needs a reason and an expiry, see security/image-scan/README.md.
+#
+# Format (one entry = one comment line with the reason + one id line):
+#
+#   # <why it does not apply or cannot be fixed yet>, reviewed by <who> on <YYYY-MM-DD>
+#   CVE-YYYY-NNNNN exp:YYYY-MM-DD
+#
+# exp: at most 90 days from the day the entry is added; Trivy stops ignoring the id after that date.
