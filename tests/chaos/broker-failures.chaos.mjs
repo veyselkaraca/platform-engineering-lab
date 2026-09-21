@@ -151,7 +151,7 @@ describe('async path under failure', { concurrency: false }, () => {
     const since = new Date().toISOString();
     const lost = await place();
     assert.equal(lost.status, 201, 'the order is committed before publishing (ADR-001), so a broker outage must not fail it');
-    assert.match(logsSince('order-service', since), new RegExp(`order\.publish_failed orderId=${lost.body.id}`));
+    assert.match(logsSince('order-service', since), new RegExp(`order\\.publish_failed orderId=${lost.body.id}`));
 
     docker('start', 'rabbitmq');
     await waitBroker();
