@@ -6,7 +6,7 @@ Decision and alternatives: [ADR-002](../decisions/ADR-002-static-analysis.md). R
 
 CodeQL (`security-extended` query suite, JavaScript/TypeScript) runs in the `codeql` job of `.github/workflows/_service.yml`, in parallel with `verify`. Findings are uploaded to the repository Security tab and any high or critical one fails the pipeline. The image build waits for the job:
 
-`verify` + `codeql` -> image build -> Trivy -> smoke test -> publish
+`verify` + `codeql` + `secret-scan` -> image build -> Trivy -> smoke test -> publish
 
 The three scanners in the pipeline fail at the same level:
 

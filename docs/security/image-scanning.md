@@ -6,7 +6,7 @@ Requirements: [issue #4](https://github.com/veyselkaraca/platform-engineering-la
 
 The `image` job of `.github/workflows/_service.yml` builds `<service>:<commit-sha>` once and scans that exact image with Trivy (`aquasecurity/trivy-action`) before the smoke test and before publish:
 
-`verify` + `codeql` -> image build -> **Trivy** -> smoke test -> publish
+`verify` + `codeql` + `secret-scan` -> image build -> **Trivy** -> smoke test -> publish
 
 The same image that passed is the one pushed; it is never rebuilt after the scan.
 

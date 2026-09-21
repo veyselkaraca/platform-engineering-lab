@@ -121,7 +121,7 @@ Scripted in `tests/chaos/keycloak-outage.sh`, which also runs the "past TTL" cas
 | ID-8 | user-service `id` tests; ownership tests use `sub` |
 | ID-9 | Smoke uses the dev users; `tests/integration/identity-config.test.mjs` fails if any non-dev realm file has users or direct-grant clients |
 | ID-10 | 401/403 responses carry `x-request-id`; log line asserted |
-| IDN-1 | Secret scan in CI (gitleaks or equivalent when the SAST slice lands); review that every credential in the realm and `.env.example` is marked fake |
+| IDN-1 | Secret scan in CI (gitleaks, [issue #5](https://github.com/veyselkaraca/platform-engineering-lab/issues/5), `docs/security/secret-scanning.md`); review that every credential in the realm and `.env.example` is marked fake |
 | IDN-2 | Redaction unit tests; chaos/smoke logs grepped for the token |
 | IDN-3, IDN-4 | Integration JWKS cases; chaos scenarios |
 | IDN-5 | Config unit tests |
@@ -176,6 +176,6 @@ Remaining gaps, stated plainly:
 
 - The tests need the whole stack, so they are not part of the per-service unit runs; they have their own workflow. That workflow passes on GitHub Actions (hosted runner), including the chaos steps.
 - The **`order.created` event schema** contract and the consumer's broker behavior (retry, DLQ, reconnect) are still verified by hand, as before this feature; the new tests only cover HTTP and identity.
-- **Secret scanning in CI** (IDN-1) waits for the SAST/dependency-scan slice; gitleaks was run once locally (result above) and the static checks assert the sample env and dev realm only contain placeholder values.
+- **Secret scanning in CI** (IDN-1): done in [issue #5](https://github.com/veyselkaraca/platform-engineering-lab/issues/5). gitleaks scans the full history on every push and PR and before every publish (`docs/security/secret-scanning.md`); the static checks still assert the sample env and dev realm only contain placeholder values.
 - **Metrics** (IDN-7): done by the observability slice. Every refusal is counted as `auth_rejections_total{reason}` in all four services (unit-tested per service and seen in Prometheus by the pipeline test); the `AuthenticationKeysUnavailable` alert covers the Keycloak-keys case.
 - Access-token expiry against real Keycloak is not exercised (5 minutes); expiry handling is covered by unit tests and by the forged expired token in the e2e test.

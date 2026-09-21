@@ -5,6 +5,7 @@ GitHub only runs workflows from `.github/workflows/`, so the executable definiti
 | Workflow | Role |
 |---|---|
 | `_service.yml` | Reusable pipeline shared by every service: verify (lint, test, build, dependency gate over `npm audit` with time-boxed exceptions, see [docs/security/dependency-scanning.md](../../docs/security/dependency-scanning.md)) + CodeQL SAST that fails the pipeline on high/critical findings (see [docs/security/static-analysis.md](../../docs/security/static-analysis.md)) -> build image (`<commit-sha>` tag) -> Trivy image scan that fails the pipeline on fixable high/critical vulnerabilities and high/critical secrets, exceptions in `security/image-scan/.trivyignore` (see [docs/security/image-scanning.md](../../docs/security/image-scanning.md)) -> smoke test via `docker compose` -> publish the same image to GHCR (main only) |
+| `secret-scan.yml` | gitleaks over the whole git history on every push and pull request (no path filters), also called by `_service.yml` as the `secret-scan` job that the `image` job needs; fails on any finding (see [docs/security/secret-scanning.md](../../docs/security/secret-scanning.md)) |
 | `platform-tests.yml` | Whole-stack tests (integration, contract, end to end, telemetry pipeline, outage and alert scenarios) against docker compose with the observability profile, independent of any single service |
 | `user-service.yml`, `order-service.yml`, `notification-worker.yml`, `api-gateway.yml` | Thin callers: path filters and per-service inputs (`smoke-deps`, `smoke-urls`) |
 
