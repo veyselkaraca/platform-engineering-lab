@@ -14,7 +14,7 @@ The three scanners in the pipeline fail at the same level:
 |---|---|---|
 | Dependency advisories | `verify`: `npm audit --json` + `security/dependency-scan/gate.mjs` ([details](dependency-scanning.md)) | fixable high, critical, unless excepted |
 | Static analysis (SAST) | `codeql`: CodeQL + `security/sast/gate.mjs` | security-severity >= 7.0 (high, critical) |
-| Image vulnerabilities | `image`: Trivy `--severity HIGH,CRITICAL --ignore-unfixed` | fixable high, critical |
+| Image vulnerabilities and secrets | `image`: Trivy `--severity HIGH,CRITICAL --ignore-unfixed` ([details](image-scanning.md)) | fixable high, critical; high/critical secrets |
 
 ## The gate
 

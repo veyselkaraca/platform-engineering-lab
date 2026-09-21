@@ -48,7 +48,7 @@ Against the running stack (dev users and tokens: [security/keycloak/README.md](s
 | Observability pipeline | `node --test --test-reporter=spec --test-concurrency=1 tests/observability/pipeline.obs.mjs` (stack up with the profile) |
 | Chaos (disruptive: stops PostgreSQL/RabbitMQ/Keycloak, restores them) | `sh tests/chaos/keycloak-outage.sh`, and `node --test --test-reporter=spec --test-concurrency=1 tests/chaos/broker-failures.chaos.mjs tests/chaos/dependency-failures.chaos.mjs tests/chaos/database-failures.chaos.mjs` |
 | Replay dead-lettered messages | `sh scripts/replay-dlq.sh` |
-| Image scan | `docker run --rm -v //var/run/docker.sock:/var/run/docker.sock aquasec/trivy image --severity HIGH,CRITICAL --ignore-unfixed user-service:local` |
+| Image scan (also a blocking gate in every service pipeline, [details](docs/security/image-scanning.md)) | `docker run --rm -v //var/run/docker.sock:/var/run/docker.sock -v "$PWD/security/image-scan:/ignore:ro" aquasec/trivy image --severity HIGH,CRITICAL --ignore-unfixed --scanners vuln,secret --ignorefile /ignore/.trivyignore <service>:local` (`api-gateway`, `user-service`, `order-service`, `notification-worker`) |
 
 Runbooks: [keycloak-outage](docs/operations/runbooks/keycloak-outage.md), [notification-dlq](docs/operations/runbooks/notification-dlq.md), [service-alerts](docs/operations/runbooks/service-alerts.md). CI: `.github/workflows/` (reusable `_service.yml`, per-service callers, `platform-tests.yml`).
 

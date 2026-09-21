@@ -41,7 +41,7 @@ The three scanners in the pipeline fail at the same level (see [static-analysis.
 
 The gate fails when an entry has no `id`, `package` or `reason`, has dates that are not `YYYY-MM-DD`, lasts more than 90 days (`expires` minus `added`) or is past its `expires` date (valid through that day). It checks every entry, also one that matches nothing, so a stale exception cannot sit in the file unnoticed. Changes under `security/dependency-scan/` trigger the service pipelines.
 
-An exception covers this gate only. The Trivy image scan (`image` job) is separate: a production dependency that is excepted here is still reported there when it is fixable and HIGH/CRITICAL, and fails the job. For a production dependency, add a `.trivyignore` entry for the same advisory with the same expiry (Trivy's `exp:` syntax) in the same change, and remove both together. Dev-only dependencies are not in the image and need no second entry. (Seen in the throwaway run of #3: the dependency gate passed with the exception, `image` failed in Trivy on the same package.)
+An exception covers this gate only. The Trivy image scan (`image` job) is separate: a production dependency that is excepted here is still reported there when it is fixable and HIGH/CRITICAL, and fails the job. For a production dependency, add an entry for the same advisory with the same expiry (Trivy's `exp:` syntax) to `security/image-scan/.trivyignore` in the same change (format: [image-scanning.md](image-scanning.md#exceptions)), and remove both together. Dev-only dependencies are not in the image and need no second entry. (Seen in the throwaway run of #3: the dependency gate passed with the exception, `image` failed in Trivy on the same package.)
 
 ## When the gate fails
 
