@@ -4,7 +4,7 @@ GitHub only runs workflows from `.github/workflows/`, so the executable definiti
 
 | Workflow | Role |
 |---|---|
-| `_service.yml` | Reusable pipeline shared by every service: verify (lint, test, build, `npm audit`) + static analysis (SonarQube quality gate that fails the pipeline, CodeQL as a non-blocking second layer, see [docs/security/static-analysis.md](../../docs/security/static-analysis.md)) -> build image (`<commit-sha>` tag) -> Trivy scan -> smoke test via `docker compose` -> publish the same image to GHCR (main only) |
+| `_service.yml` | Reusable pipeline shared by every service: verify (lint, test, build, `npm audit`) + static analysis (target: SonarQube quality gate that blocks, CodeQL as non-blocking second layer, see [docs/security/static-analysis.md](../../docs/security/static-analysis.md); today CodeQL only) -> build image (`<commit-sha>` tag) -> Trivy scan -> smoke test via `docker compose` -> publish the same image to GHCR (main only) |
 | `platform-tests.yml` | Whole-stack tests (integration, contract, end to end, telemetry pipeline, outage and alert scenarios) against docker compose with the observability profile, independent of any single service |
 | `user-service.yml`, `order-service.yml`, `notification-worker.yml`, `api-gateway.yml` | Thin callers: path filters and per-service inputs (`smoke-deps`, `smoke-urls`) |
 

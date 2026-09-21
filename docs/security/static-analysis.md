@@ -2,6 +2,8 @@
 
 Decision and alternatives: [ADR-002](../decisions/ADR-002-static-analysis.md). Requirements, test plan and operations notes: [issue #2](https://github.com/veyselkaraca/platform-engineering-lab/issues/2).
 
+> Status: decided; the Sonar job, gate script and local `quality` profile are being implemented in issue #2. Until they land, `_service.yml` still runs CodeQL only. This page describes the target and is updated when each piece lands.
+
 ## Two tools, one blocking gate
 
 | Tool | Role | Blocks the build | Where the config lives |
@@ -13,15 +15,16 @@ CodeQL finds injection-style flows across functions that Sonar's rules can miss;
 
 ## Pipeline placement
 
-Both run in `.github/workflows/_service.yml` in the Analyze stage, in parallel with `verify`, and the image build waits for all three: `verify` + `sonar` gate + `codeql` finished -> image build -> Trivy -> smoke test -> publish. The image is therefore never built from code that failed the gate.
+Both run in `.github/workflows/_service.yml` in the Analyze stage, in parallel with `verify`, and the image build waits for them: `verify` + Sonar gate + CodeQL finished -> image build -> Trivy -> smoke test -> publish. The image is therefore never built from code that failed the gate.
 
 Per service the Sonar job:
 
 1. runs the unit tests with `--coverage` (`lcov` output),
-2. starts SonarQube from the compose `quality` profile on the runner and waits until it is healthy,
-3. runs `security/sonar/analyze.sh <service>`: sets the admin password (`SONAR_ADMIN_PASSWORD` from the bootstrapped `.env`, a fake lab value), checks that the default gate is still the built-in Sonar way, creates a fresh scan token, and runs the scanner (`@sonar/scan`, no Java needed) with `sonar.qualitygate.wait=true`; a failed gate makes the script, and so the job, exit non-zero.
+2. starts a throwaway SonarQube service container and waits until it is up,
+3. applies the quality gate from `security/sonar/`,
+4. runs the scanner with `sonar.qualitygate.wait=true`; a failed gate fails the job.
 
-Each service is its own Sonar project (`platform-lab-<service>`), matching the per-service pipelines. The server and its token exist only for the duration of the job; no Sonar secret is stored in the repository or in GitHub. The gate is Sonar's built-in one, which cannot be edited, so there is no gate definition file: the script refuses to scan if the default gate was swapped, which is what keeps the gate under version control.
+Each service is its own Sonar project (`platform-lab-<service>`), matching the per-service pipelines. The server and its token exist only for the duration of the job; no Sonar secret is stored in the repository or in GitHub.
 
 ## Quality gate
 
@@ -36,15 +39,11 @@ SonarQube's built-in "Sonar way" conditions:
 
 On a throwaway server every analysis is a first analysis, so "new code" is the whole service. Consequences: a hotspot cannot be reviewed there, so any hotspot must be fixed in code; and the coverage floor applies to the whole service (currently between 81 % and 97 % statements).
 
-When a gate fails: the scanner log prints `QUALITY GATE STATUS: FAILED`. Reproduce it locally (below), open the dashboard of that project (`http://localhost:9000/dashboard?id=platform-lab-<service>`) to see the failing condition, and fix the code or add the missing tests. Do not lower a threshold or exclude a path to get green; a threshold change is a change to this page and to ADR-002.
+When a gate fails: open the failing condition in the job log (the scanner prints the gate result and the dashboard URL of the local instance for reproducing), fix the code or add the missing tests. Do not lower a threshold or exclude a path to get green; a threshold change is a change to this page and to ADR-002.
 
 ## Running it locally
 
-The persistent instance is in the compose stack under the `quality` profile (Sonar UI on `http://localhost:9000`, about 2 GB of memory, so it is opt-in). Commands are in [security/sonar/README.md](../../security/sonar/README.md).
-
-## Verified behavior
-
-Run locally against the compose instance (the same script and gate as CI): all four services pass the gate (coverage 81-97 %); adding a hard-coded credential and an identical-operands bug to `user-service` made `analyze.sh` exit 1 with `QUALITY GATE STATUS: FAILED` (condition: new violations), and reverting it passed again. The scanner and gate script ran identically on a fresh server (default `admin/admin`) and on a re-run (idempotent).
+The persistent instance is in the compose stack under the `quality` profile (Sonar UI on `http://localhost:9000`, about 2 GB of memory, so it is opt-in). Commands and first-run steps are in [security/sonar/README.md](../../security/sonar/README.md).
 
 ## What this does not cover
 
