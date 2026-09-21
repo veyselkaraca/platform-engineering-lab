@@ -21,7 +21,7 @@ Layers: application (gateway, two backends, an async worker, persistence, cache,
 
 ## Technology baseline
 
-Node.js / TypeScript / NestJS (REST); PostgreSQL, Redis, RabbitMQ; Keycloak (OIDC/OAuth2, JWT); Docker-compatible images; Kubernetes with Helm; Ansible (Bash/Python only where they materially help); at least one complete CI/CD implementation, with the same lifecycle representable in others (GitHub Actions, Azure DevOps, GitLab CI, Jenkins); SonarQube-compatible static analysis, dependency and image scanning; OpenTelemetry, Prometheus-compatible metrics, Grafana, central logs, a trace backend. Local runs may use different concrete implementations as long as the responsibilities stay intact.
+Node.js / TypeScript / NestJS (REST); PostgreSQL, Redis, RabbitMQ; Keycloak (OIDC/OAuth2, JWT); Docker-compatible images; Kubernetes with Helm; Ansible (Bash/Python only where they materially help); at least one complete CI/CD implementation, with the same lifecycle representable in others (GitHub Actions, Azure DevOps, GitLab CI, Jenkins); static analysis (CodeQL, see [ADR-002](../decisions/ADR-002-static-analysis.md)), dependency and image scanning; OpenTelemetry, Prometheus-compatible metrics, Grafana, central logs, a trace backend. Local runs may use different concrete implementations as long as the responsibilities stay intact.
 
 The repository layout is in the [README](../../README.md#layout).
 

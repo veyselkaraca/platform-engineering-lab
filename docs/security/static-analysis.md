@@ -2,52 +2,49 @@
 
 Decision and alternatives: [ADR-002](../decisions/ADR-002-static-analysis.md). Requirements, test plan and operations notes: [issue #2](https://github.com/veyselkaraca/platform-engineering-lab/issues/2).
 
-> Status: decided; the Sonar job, gate script and local `quality` profile are being implemented in issue #2. Until they land, `_service.yml` still runs CodeQL only. This page describes the target and is updated when each piece lands.
+## What runs
 
-## Two tools, one blocking gate
+CodeQL (`security-extended` query suite, JavaScript/TypeScript) runs in the `codeql` job of `.github/workflows/_service.yml`, in parallel with `verify`. Findings are uploaded to the repository Security tab and any high or critical one fails the pipeline. The image build waits for the job:
 
-| Tool | Role | Blocks the build | Where the config lives |
-|---|---|---|---|
-| SonarQube (Community Build) | Quality gate: issues, ratings, security hotspots, coverage, duplication | **Yes** | `security/sonar/` |
-| CodeQL | Data-flow security analysis, findings in the repository Security tab | No | `security/sast/` |
+`verify` + `codeql` -> image build -> Trivy -> smoke test -> publish
 
-CodeQL finds injection-style flows across functions that Sonar's rules can miss; Sonar covers maintainability, coverage and duplication that CodeQL does not. They do not overlap enough to justify two gates, so only Sonar fails a build.
+The three scanners in the pipeline fail at the same level:
 
-## Pipeline placement
+| Check | Where | Fails on |
+|---|---|---|
+| Dependency advisories | `verify`: `npm audit --audit-level=high` | high, critical |
+| Static analysis (SAST) | `codeql`: CodeQL + `security/sast/gate.mjs` | security-severity >= 7.0 (high, critical) |
+| Image vulnerabilities | `image`: Trivy `--severity HIGH,CRITICAL --ignore-unfixed` | fixable high, critical |
 
-Both run in `.github/workflows/_service.yml` in the Analyze stage, in parallel with `verify`, and the image build waits for them: `verify` + Sonar gate + CodeQL finished -> image build -> Trivy -> smoke test -> publish. The image is therefore never built from code that failed the gate.
+## The gate
 
-Per service the Sonar job:
+The `analyze` action uploads results but never fails on them. The job therefore writes SARIF (`output: sarif-results`) and runs `node security/sast/gate.mjs sarif-results/*.sarif`:
 
-1. runs the unit tests with `--coverage` (`lcov` output),
-2. starts a throwaway SonarQube service container and waits until it is up,
-3. applies the quality gate from `security/sonar/`,
-4. runs the scanner with `sonar.qualitygate.wait=true`; a failed gate fails the job.
+- It counts results that are not suppressed and whose rule has a `security-severity` of at least 7.0 (override for experiments with `CODEQL_FAIL_SEVERITY`); it prints each one as `file:line rule (score) message` and exits 1.
+- Medium and low findings, and rules with no security score, stay visible in the Security tab and do not fail the build.
+- It fails closed: no SARIF file, or one that cannot be parsed, exits 1.
+- The job runs `node --test security/sast/gate.test.mjs` first: blocking and non-blocking scores, rules read from the driver and from query-pack extensions, suppressions, the threshold override, and the exit codes of the command line.
 
-Each service is its own Sonar project (`platform-lab-<service>`), matching the per-service pipelines. The server and its token exist only for the duration of the job; no Sonar secret is stored in the repository or in GitHub.
+CodeQL analyzes the whole repository in each service pipeline, so a blocking finding in one service fails every service pipeline that runs until it is fixed.
 
-## Quality gate
+## When the gate fails
 
-SonarQube's built-in "Sonar way" conditions:
+1. Read the `Fail on high/critical findings` step: it lists `file:line`, the rule and its score. The same alert is in the Security tab (Code scanning) with the data-flow path.
+2. Fix the code. If the alert is a false positive, suppress it in code with a `// codeql[<rule-id>]` comment that says why, so the decision is reviewed in the diff.
+3. Do not lower the threshold or exclude a path to get green; a threshold change is a change to this page and to ADR-002.
 
-| Condition | Threshold |
+## Configuration
+
+| File | Purpose |
 |---|---|
-| New issues | 0 (Reliability, Security and Maintainability ratings all A) |
-| Security Hotspots reviewed | 100 % |
-| Coverage on new code | >= 80 % |
-| Duplicated lines on new code | <= 3 % |
+| `security/sast/codeql-config.yml` | Query suite (`security-extended`) and ignored paths (`node_modules`, `dist`, `coverage`); passed as `config-file` to the CodeQL `init` step |
+| `security/sast/gate.mjs` | The gate |
+| `security/sast/gate.test.mjs` | Test of the gate: `node --test security/sast/gate.test.mjs` |
 
-On a throwaway server every analysis is a first analysis, so "new code" is the whole service. Consequences: a hotspot cannot be reviewed there, so any hotspot must be fixed in code; and the coverage floor applies to the whole service (currently between 81 % and 97 % statements).
-
-When a gate fails: open the failing condition in the job log (the scanner prints the gate result and the dashboard URL of the local instance for reproducing), fix the code or add the missing tests. Do not lower a threshold or exclude a path to get green; a threshold change is a change to this page and to ADR-002.
-
-## Running it locally
-
-The persistent instance is in the compose stack under the `quality` profile (Sonar UI on `http://localhost:9000`, about 2 GB of memory, so it is opt-in). Commands and first-run steps are in [security/sonar/README.md](../../security/sonar/README.md).
+Changes under `security/sast/` trigger the service pipelines.
 
 ## What this does not cover
 
-- Dependency advisories: `npm audit --audit-level=high` in the `verify` job.
-- Container image vulnerabilities: Trivy in the `image` job.
+- Coverage, duplication and maintainability gates: not provided by CodeQL. SonarQube, which does, is set up in a separate repository (ADR-002).
 - Runtime and cross-service behavior: the platform tests and the smoke test.
-- Branch and pull-request analysis, history and trends: not available in Community Build with a throwaway server.
+- Findings CodeQL has no query for; it is one layer, alongside dependency and image scanning.

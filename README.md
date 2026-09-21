@@ -11,7 +11,7 @@ The engineering rules are in [docs/architecture/engineering-standards.md](docs/a
 | `services/` | NestJS microservices (api-gateway, user-service, order-service, notification-worker) |
 | `infrastructure/` | Docker Compose, Kubernetes manifests, Helm chart, Ansible |
 | `observability/` | OpenTelemetry, Prometheus, Grafana, logging, tracing |
-| `security/` | Keycloak realm, Sonar, SAST, dependency and image scanning |
+| `security/` | Keycloak realm, SAST (CodeQL), dependency and image scanning |
 | `messaging/` | RabbitMQ definitions and policies |
 | `ci/` | Pipeline definitions per CI engine |
 | `tests/` | Integration, e2e, contract, load, chaos |
