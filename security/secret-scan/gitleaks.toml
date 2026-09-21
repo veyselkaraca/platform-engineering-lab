@@ -1,0 +1,8 @@
+# gitleaks configuration (issue #5, docs/security/secret-scanning.md).
+# The default rule set stays on; nothing is allow-listed today because the sample env file and the dev realm
+# hold values no rule flags. Add an [[allowlists]] entry only for a proven false positive, always limited to
+# one path AND one regex (condition = "AND"), never to a whole directory or a rule. A real secret is rotated, not listed.
+title = "platform-engineering-lab secret scan"
+
+[extend]
+useDefault = true

@@ -1,5 +1,5 @@
 # Reusable pipeline shared by every service (called from <service>.yml).
-# Validate -> Test -> Analyze (lint, CodeQL gate) -> Scan (dependency gate, image) -> Build -> Verify -> Publish
+# Validate -> Test -> Analyze (lint, CodeQL gate) -> Scan (dependency gate, secrets, image) -> Build -> Verify -> Publish
 name: service pipeline
 
 on:
@@ -75,9 +75,13 @@ jobs:
       - name: Fail on high/critical findings
         run: node security/sast/gate.mjs sarif-results/*.sarif
 
+  # Secret scan (#5): the same workflow that runs on every push and PR; a leak also stops the publish.
+  secret-scan:
+    uses: ./.github/workflows/secret-scan.yml
+
   # Build once -> scan -> smoke test -> publish the SAME image (never rebuilt).
   image:
-    needs: [verify, codeql]
+    needs: [verify, codeql, secret-scan]
     runs-on: ubuntu-latest
     permissions:
       contents: read

@@ -11,9 +11,11 @@ on:
       - "security/sast/**"
       - "security/dependency-scan/**"
       - "security/image-scan/**"
+      - "security/secret-scan/**"
       - "scripts/**"
       - ".github/workflows/api-gateway.yml"
       - ".github/workflows/_service.yml"
+      - ".github/workflows/secret-scan.yml"
   pull_request:
     paths:
       - "services/api-gateway/**"
@@ -23,9 +25,11 @@ on:
       - "security/sast/**"
       - "security/dependency-scan/**"
       - "security/image-scan/**"
+      - "security/secret-scan/**"
       - "scripts/**"
       - ".github/workflows/api-gateway.yml"
       - ".github/workflows/_service.yml"
+      - ".github/workflows/secret-scan.yml"
   workflow_dispatch:
 
 permissions:
