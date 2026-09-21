@@ -1,8 +1,0 @@
-# CodeQL configuration (docs/security/static-analysis.md). Referenced by `config-file` in _service.yml.
-name: platform-lab
-queries:
-  - uses: security-extended
-paths-ignore:
-  - "**/node_modules"
-  - "**/dist"
-  - "**/coverage"
