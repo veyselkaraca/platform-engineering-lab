@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.1.1](https://github.com/veyselkaraca/platform-engineering-lab/compare/v0.1.0...v0.1.1) (2026-09-23)
+
+
+### Bug Fixes
+
+* **release:** don't publish a release before every service is retagged ([#35](https://github.com/veyselkaraca/platform-engineering-lab/issues/35)) ([2d2ca59](https://github.com/veyselkaraca/platform-engineering-lab/commit/2d2ca592ed5d181b1307617e5f43162f9961d85f))
+* **release:** fail fast when a service pipeline fails instead of timing out ([#35](https://github.com/veyselkaraca/platform-engineering-lab/issues/35)) ([2f460bb](https://github.com/veyselkaraca/platform-engineering-lab/commit/2f460bbacbff77b5fe88e38cd13820b15e5f7090))
+* **release:** widen the retag wait to 30 minutes ([#35](https://github.com/veyselkaraca/platform-engineering-lab/issues/35)) ([cfa87f2](https://github.com/veyselkaraca/platform-engineering-lab/commit/cfa87f2dc831cf6d9ced64f13c69c9a8226f9e49))
+
+
+### CI/CD
+
+* move workflows off Node 20 actions, CodeQL v3 and ubuntu-latest ([#38](https://github.com/veyselkaraca/platform-engineering-lab/issues/38)) ([f4ee47f](https://github.com/veyselkaraca/platform-engineering-lab/commit/f4ee47fde73aa4d9b32aaa42a4a1740bbd97025f)), closes [#27](https://github.com/veyselkaraca/platform-engineering-lab/issues/27)
+
 ## 0.1.0 (2026-09-23)
 
 
