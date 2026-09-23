@@ -90,6 +90,13 @@ jobs:
           sh scripts/bootstrap.sh
           docker compose -f infrastructure/docker/docker-compose.yml up -d --wait
 
+      # Real traffic through order-service, notification-worker, PostgreSQL and RabbitMQ before the tight-timing
+      # scenarios below (SIGTERM must drain in Docker's 10s default grace period): a stack that just passed its
+      # health checks is not yet warmed up (JIT, DB connection pools), and the old single-job workflow always had
+      # this step (plus the observability-profile-only telemetry pipeline step) running first for the same reason.
+      - name: Integration, contract and end-to-end tests
+        run: node --test --test-concurrency=1 "tests/**/*.test.mjs"
+
       - name: Keycloak outage behavior
         run: sh tests/chaos/keycloak-outage.sh
 
