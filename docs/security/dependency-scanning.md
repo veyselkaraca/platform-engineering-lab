@@ -70,7 +70,7 @@ cd services/user-service && npm audit --json > /tmp/audit.json; node ../../secur
 
 All weekly. Minor and patch npm/action updates are grouped into one PR per ecosystem per run to keep the PR count down; major updates open individually since they need a closer look.
 
-`@nestjs/*` and `jose` majors are held back with an `ignore` entry and a comment naming the reason (12 is ESM-only while these services are CommonJS; `jose` ^5 is the last CommonJS major) — see the "Gotchas" section of CLAUDE.md. Bumping past those pins is a deliberate migration, not something to land as a routine dependency PR.
+`@nestjs/*` and `jose` majors are held back with an `ignore` entry and a comment naming the reason (12 is ESM-only while these services are CommonJS; `jose` ^5 is the last CommonJS major) — see the "Gotchas" section of CLAUDE.md. The `node` base image major is held back the same way (each Dockerfile pins Node 22 LTS; a jump to a non-LTS or untested major needs a reviewed change, not an auto-merged PR — seen live: the first run opened PRs bumping `node:22-alpine` straight to `node:25-alpine`, an odd/non-LTS release). Bumping past any of these pins is a deliberate migration, not something to land as a routine dependency PR.
 
 Dependabot pushes to a branch in this repository (not a fork), so the existing `push` triggers on `services/*.yml` and the path filters in `.github/workflows/*.yml` fire normally — a Dependabot PR runs the same pipeline and dependency gate as any other change, no separate CI wiring needed.
 
