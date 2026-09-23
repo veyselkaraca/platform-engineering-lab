@@ -25,8 +25,10 @@ RUN npm ci --omit=dev && npm cache clean --force
 # Runtime: production deps + compiled output only, non-root.
 FROM base AS runtime
 ARG GIT_SHA=unknown
+ARG SOURCE_URL=unknown
 LABEL org.opencontainers.image.title="api-gateway" \
-      org.opencontainers.image.revision="${GIT_SHA}"
+      org.opencontainers.image.revision="${GIT_SHA}" \
+      org.opencontainers.image.source="${SOURCE_URL}"
 ENV NODE_ENV=production
 # The app runs with plain `node`; drop npm/npx/corepack (and their bundled deps) from the runtime image.
 RUN rm -rf /usr/local/lib/node_modules /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/corepack

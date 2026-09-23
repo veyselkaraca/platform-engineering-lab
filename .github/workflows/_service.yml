@@ -109,7 +109,9 @@ jobs:
         with:
           context: services/${{ inputs.service }}
           target: runtime
-          build-args: GIT_SHA=${{ github.sha }}
+          build-args: |
+            GIT_SHA=${{ github.sha }}
+            SOURCE_URL=${{ github.server_url }}/${{ github.repository }}
           tags: ${{ env.IMAGE }}:${{ github.sha }}
           load: true
           cache-from: type=gha,scope=${{ inputs.service }}
