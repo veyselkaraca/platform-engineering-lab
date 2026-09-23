@@ -1,10 +1,15 @@
 # Release management (#35): release-please turns Conventional Commits since the last tag into a release
 # PR (version bump + CHANGELOG.md); merging it is the deliberate step (REL-7) that creates the vX.Y.Z tag
-# and a DRAFT GitHub Release. The retag job then adds <service>:vX.Y.Z as a second tag on the SAME digest
-# as <service>:<commit-sha> for all four services -- images are never rebuilt for a release (#6, immutable
-# artifacts). Only once every service has been retagged does publish-release undraft the GitHub Release:
-# the tag/PR merge don't wait on the four (separately triggered) service pipelines for that commit, so a
-# release must not look "done" until its artifacts are confirmed to exist.
+# and the GitHub Release. The retag job then adds <service>:vX.Y.Z as a second tag on the SAME digest as
+# <service>:<commit-sha> for all four services -- images are never rebuilt for a release (#6, immutable
+# artifacts). The tag/PR merge don't wait on the four (separately triggered) service pipelines for that
+# commit, so retag can still be catching up after the release is announced; it fails loudly (never tags
+# a missing image) and is safe to re-run -- see docs/operations/runbooks/release.md.
+#
+# A draft-release-until-confirmed design was tried and reverted: release-please does not treat a draft
+# release as "the last release" on its next run, so a stuck draft (e.g. a failed retag) desyncs its own
+# tag bookkeeping and corrupts the next release PR. Immediate, non-draft tag/release creation is what
+# release-please expects; a failed retag is communicated by the failed workflow run, not a hidden Release.
 name: release
 
 on:
@@ -76,7 +81,7 @@ jobs:
               exit 0
             fi
             conclusion="$(gh run list -R "${{ github.repository }}" --workflow "${{ matrix.service }}.yml" --branch main \
-              --json headSha,conclusion --jq --arg sha "${{ github.sha }}" 'map(select(.headSha == $sha)) | .[0].conclusion // empty')"
+              --json headSha,conclusion | jq -r --arg sha "$GITHUB_SHA" 'map(select(.headSha == $sha)) | .[0].conclusion // empty')"
             case "$conclusion" in
               failure|cancelled|timed_out)
                 echo "::error::${{ matrix.service }}.yml concluded $conclusion for ${{ github.sha }}, $ref will never be published" >&2
@@ -96,17 +101,3 @@ jobs:
 
       - name: Record the retag
         run: echo "Tagged \`$IMAGE:$TAG\` alongside \`$IMAGE:${{ github.sha }}\` (same digest)" >> "$GITHUB_STEP_SUMMARY"
-
-  # Only runs once every service above is confirmed retagged: this is what makes the release "real".
-  publish-release:
-    needs: [release-please, retag]
-    if: needs.release-please.outputs.released == 'true'
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    env:
-      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      TAG: ${{ needs.release-please.outputs.tag_name }}
-    steps:
-      - uses: actions/checkout@v4
-      - run: gh release edit "$TAG" --draft=false

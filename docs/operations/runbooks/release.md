@@ -16,7 +16,7 @@ gh pr list --search "chore(main): release" --state open
 gh pr merge <pr-number> --squash
 ```
 
-Merging triggers, in parallel on the same push: the four service pipelines (build, scan, publish `<service>:<commit-sha>`) and the `release` workflow. `release-please` creates the `vX.Y.Z` tag and a **draft** GitHub Release immediately (it does not wait on the four pipelines); `retag` waits for each `<service>:<commit-sha>` image and adds `<service>:vX.Y.Z` on the same digest; only once every service is retagged does `publish-release` undraft the Release. A release that never turns from draft to published means the artifacts were never confirmed — see §3.
+Merging triggers, in parallel on the same push: the four service pipelines (build, scan, publish `<service>:<commit-sha>`) and the `release` workflow. `release-please` creates the `vX.Y.Z` tag and the GitHub Release immediately (it does not wait on the four pipelines); `retag` then waits for each `<service>:<commit-sha>` image and adds `<service>:vX.Y.Z` on the same digest. A tag/Release existing before every image is confirmed is a known gap (see §3) — a failed `retag` run is the visible signal, not a hidden release.
 
 ## 2. Correct a release before it is tagged
 
@@ -37,17 +37,16 @@ gh run rerun <run-id> --failed
 - **A service's wait step failed fast** (before the 30-minute timeout): its pipeline (`gh run list --workflow <service>.yml --branch main`) already concluded `failure`, `cancelled` or `timed_out` for this commit — the retag step checks this on every poll and exits immediately rather than waiting out the image that will never appear. Fix the pipeline, push a follow-up commit if needed, then re-run the retag job once `<service>:<commit-sha>` exists.
 - **Timed out after 30 minutes**: the pipeline is still running (queued behind other jobs, or just slow) rather than failed. Check `gh run list --workflow <service>.yml --branch main` for that commit and either wait for it or re-run the retag job once it finishes.
 - **`docker buildx imagetools create` failed**: check the job log for the registry error; re-running is always safe once the underlying cause (auth, a transient GHCR error) is gone.
-- **Release stuck as a draft**: `retag` failed or is still running for at least one service — `gh release view <tag> --json isDraft` shows `true` until `publish-release` runs. Fix whatever `retag` reported, re-run the workflow (or just `publish-release` once every service is confirmed retagged: `gh run rerun <run-id> --job publish-release`); nothing else needs redoing.
+- A `gh run rerun` reruns the workflow file as it existed at that commit, so it cannot pick up a fix made after the fact — a bug in `release.yml` itself needs a fresh commit/push (a new release cycle) to take effect, not a rerun of an old run.
 
 ## 4. Verify
 
 ```bash
 docker buildx imagetools inspect ghcr.io/<owner>/<repo>/<service>:vX.Y.Z --format '{{.Manifest.Digest}}'
 docker buildx imagetools inspect ghcr.io/<owner>/<repo>/<service>:<commit-sha> --format '{{.Manifest.Digest}}'
-gh release view <tag> --json isDraft --jq .isDraft   # false once every service retagged
 ```
 
-Both digests match for all four services. The GitHub Release is published (not a draft) and the `CHANGELOG.md` entry exists on `main`.
+Both digests match for all four services. The GitHub Release exists and the `CHANGELOG.md` entry is on `main`.
 
 ## After the tag exists
 

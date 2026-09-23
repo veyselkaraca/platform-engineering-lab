@@ -7,7 +7,6 @@
       "release-type": "simple",
       "include-component-in-tag": false,
       "changelog-path": "CHANGELOG.md",
-      "draft": true,
       "extra-files": [
         { "type": "json", "path": "services/api-gateway/package.json", "jsonpath": "$.version" },
         { "type": "json", "path": "services/user-service/package.json", "jsonpath": "$.version" },
