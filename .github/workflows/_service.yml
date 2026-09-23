@@ -18,6 +18,10 @@ on:
         description: Arguments for scripts/smoke-test.sh
         required: true
         type: string
+    outputs:
+      image:
+        description: Published image by digest (image@sha256:...), empty when nothing was published; deploy stages use this, never a tag
+        value: ${{ jobs.image.outputs.image }}
 
 permissions:
   contents: read
@@ -86,6 +90,8 @@ jobs:
     permissions:
       contents: read
       packages: write
+    outputs:
+      image: ${{ steps.publish.outputs.image }}
     env:
       SERVICE: ${{ inputs.service }}
       SMOKE_DEPS: ${{ inputs.smoke-deps }}
@@ -149,6 +155,21 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # A SHA tag is written once: a re-run rebuilds a (not bit-for-bit identical) image and must not replace
+      # the one already published. The digest is read back from the registry, so it is what later stages deploy.
       - name: Publish
+        id: publish
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        run: docker push "$IMAGE:${{ github.sha }}"
+        run: |
+          ref="$IMAGE:${{ github.sha }}"
+          if out="$(docker buildx imagetools inspect "$ref" 2>&1)"; then
+            echo "::notice::$ref already exists and is not overwritten"
+          elif echo "$out" | grep -q "not found"; then
+            docker push "$ref"
+          else
+            echo "$out" >&2
+            exit 1
+          fi
+          digest="$(docker buildx imagetools inspect "$ref" --format '{{.Manifest.Digest}}')"
+          echo "image=$IMAGE@$digest" >> "$GITHUB_OUTPUT"
+          echo "Published \`$IMAGE@$digest\` (tag \`${{ github.sha }}\`)" >> "$GITHUB_STEP_SUMMARY"
