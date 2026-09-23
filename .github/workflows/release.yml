@@ -62,15 +62,17 @@ jobs:
       # The commit-SHA image is published by this same push's service pipeline, which can still be
       # building when this job starts (GITHUB_TOKEN pushes/merges don't chain workflows, but the human
       # merge that lands the release commit does trigger it, in parallel with this one) -- wait for it.
+      # 30 minutes: the service pipeline runs verify + CodeQL + secret-scan + image build/scan/smoke-test
+      # (a docker-compose stack), and platform-tests alone is observed to take ~15 minutes on shared runners.
       - name: Wait for the commit-SHA image to publish
         run: |
           ref="$IMAGE:${{ github.sha }}"
-          for i in $(seq 1 30); do
+          for i in $(seq 1 90); do
             if docker buildx imagetools inspect "$ref" >/dev/null 2>&1; then
               echo "found $ref"
               exit 0
             fi
-            echo "waiting for $ref ($i/30)"
+            echo "waiting for $ref ($i/90)"
             sleep 20
           done
           echo "::error::$ref never appeared" >&2
