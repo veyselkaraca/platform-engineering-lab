@@ -34,7 +34,8 @@ gh run list --workflow release.yml --branch main
 gh run rerun <run-id> --failed
 ```
 
-- **Timed out waiting for `<service>:<commit-sha>`**: the release commit bumps every `services/*/package.json` (via `extra-files` in `release-please-config.json`), so it matches all four services' path filters and their pipelines always run — check `gh run list --workflow <service>.yml --branch main` for that commit; a failed or still-running pipeline is the usual cause. Fix or wait for it, then re-run the retag job.
+- **A service's wait step failed fast** (before the 30-minute timeout): its pipeline (`gh run list --workflow <service>.yml --branch main`) already concluded `failure`, `cancelled` or `timed_out` for this commit — the retag step checks this on every poll and exits immediately rather than waiting out the image that will never appear. Fix the pipeline, push a follow-up commit if needed, then re-run the retag job once `<service>:<commit-sha>` exists.
+- **Timed out after 30 minutes**: the pipeline is still running (queued behind other jobs, or just slow) rather than failed. Check `gh run list --workflow <service>.yml --branch main` for that commit and either wait for it or re-run the retag job once it finishes.
 - **`docker buildx imagetools create` failed**: check the job log for the registry error; re-running is always safe once the underlying cause (auth, a transient GHCR error) is gone.
 - **Release stuck as a draft**: `retag` failed or is still running for at least one service — `gh release view <tag> --json isDraft` shows `true` until `publish-release` runs. Fix whatever `retag` reported, re-run the workflow (or just `publish-release` once every service is confirmed retagged: `gh run rerun <run-id> --job publish-release`); nothing else needs redoing.
 

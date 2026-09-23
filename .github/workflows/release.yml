@@ -42,11 +42,13 @@ jobs:
     permissions:
       contents: read
       packages: write
+      actions: read
     strategy:
       matrix:
         service: [api-gateway, user-service, order-service, notification-worker]
     env:
       TAG: ${{ needs.release-please.outputs.tag_name }}
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - name: Compute image name (GHCR requires lowercase)
         run: echo "IMAGE=ghcr.io/${GITHUB_REPOSITORY,,}/${{ matrix.service }}" >> "$GITHUB_ENV"
@@ -62,8 +64,9 @@ jobs:
       # The commit-SHA image is published by this same push's service pipeline, which can still be
       # building when this job starts (GITHUB_TOKEN pushes/merges don't chain workflows, but the human
       # merge that lands the release commit does trigger it, in parallel with this one) -- wait for it.
-      # 30 minutes: the service pipeline runs verify + CodeQL + secret-scan + image build/scan/smoke-test
-      # (a docker-compose stack), and platform-tests alone is observed to take ~15 minutes on shared runners.
+      # 30 minutes of headroom (platform-tests alone runs ~15 minutes on shared runners), but each poll
+      # also checks the service pipeline's own conclusion for this commit so a failure exits immediately
+      # instead of waiting out the full timeout for an image that will never appear.
       - name: Wait for the commit-SHA image to publish
         run: |
           ref="$IMAGE:${{ github.sha }}"
@@ -72,7 +75,15 @@ jobs:
               echo "found $ref"
               exit 0
             fi
-            echo "waiting for $ref ($i/90)"
+            conclusion="$(gh run list -R "${{ github.repository }}" --workflow "${{ matrix.service }}.yml" --branch main \
+              --json headSha,conclusion --jq --arg sha "${{ github.sha }}" 'map(select(.headSha == $sha)) | .[0].conclusion // empty')"
+            case "$conclusion" in
+              failure|cancelled|timed_out)
+                echo "::error::${{ matrix.service }}.yml concluded $conclusion for ${{ github.sha }}, $ref will never be published" >&2
+                exit 1
+                ;;
+            esac
+            echo "waiting for $ref ($i/90), ${{ matrix.service }}.yml: ${conclusion:-pending}"
             sleep 20
           done
           echo "::error::$ref never appeared" >&2
