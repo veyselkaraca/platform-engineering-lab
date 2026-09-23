@@ -14,6 +14,12 @@ updates:
       - dependency-name: "jose"
         versions: [">=6"]
         # ^5 is the last CommonJS major; later majors are ESM-only
+      - dependency-name: "typescript"
+        update-types: ["version-update:semver-major"]
+        # ts-jest's peer range is ">=4.3 <7"; confirmed breaking npm ci (PR #50)
+      - dependency-name: "http-proxy-middleware"
+        update-types: ["version-update:semver-major"]
+        # v4 breaks the proxy setup at runtime; confirmed by CI (PR #53)
 
   - package-ecosystem: "npm"
     directory: "/services/order-service"
@@ -27,6 +33,11 @@ updates:
         versions: [">=12"]
       - dependency-name: "jose"
         versions: [">=6"]
+      - dependency-name: "typescript"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "ioredis"
+        update-types: ["version-update:semver-major"]
+        # typeorm 0.3's peerOptional range is "^5.0.4"; confirmed breaking npm ci (PR #52)
 
   - package-ecosystem: "npm"
     directory: "/services/notification-worker"
@@ -40,6 +51,8 @@ updates:
         versions: [">=12"]
       - dependency-name: "jose"
         versions: [">=6"]
+      - dependency-name: "typescript"
+        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: "npm"
     directory: "/services/user-service"
@@ -53,6 +66,8 @@ updates:
         versions: [">=12"]
       - dependency-name: "jose"
         versions: [">=6"]
+      - dependency-name: "typescript"
+        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: "github-actions"
     directory: "/"
