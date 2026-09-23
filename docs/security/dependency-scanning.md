@@ -1,6 +1,6 @@
 # Dependency scanning
 
-Requirements, design and test plan: [issue #3](https://github.com/veyselkaraca/platform-engineering-lab/issues/3). Follow-ups: [#31](https://github.com/veyselkaraca/platform-engineering-lab/issues/31) (Dependabot), [#32](https://github.com/veyselkaraca/platform-engineering-lab/issues/32) (SBOM, Trivy filesystem scan), [#33](https://github.com/veyselkaraca/platform-engineering-lab/issues/33) (per-service exceptions).
+Requirements, design and test plan: [issue #3](https://github.com/veyselkaraca/platform-engineering-lab/issues/3) (gate) and [#31](https://github.com/veyselkaraca/platform-engineering-lab/issues/31) (Dependabot). Follow-ups: [#32](https://github.com/veyselkaraca/platform-engineering-lab/issues/32) (SBOM, Trivy filesystem scan), [#33](https://github.com/veyselkaraca/platform-engineering-lab/issues/33) (per-service exceptions).
 
 ## What runs
 
@@ -60,8 +60,21 @@ cd services/user-service && npm audit --json > /tmp/audit.json; node ../../secur
 
 `SERVICE` (name in the summary) and `DEP_EXCEPTIONS` (exceptions file) are optional environment variables.
 
+## Dependency updates (Dependabot)
+
+`.github/dependabot.yml` proposes updates so a fixable advisory does not wait for a pipeline run to be noticed, and so non-security drift (framework/runtime minor and patch releases) does not go unseen:
+
+- **npm**, one entry per service directory (`services/api-gateway`, `services/order-service`, `services/notification-worker`, `services/user-service`) — each has its own `package-lock.json`, so its own update stream.
+- **github-actions**, one entry for `/` — covers every workflow under `.github/workflows/`.
+- **docker**, one entry per service directory — the base image line in each `Dockerfile`.
+
+All weekly. Minor and patch npm/action updates are grouped into one PR per ecosystem per run to keep the PR count down; major updates open individually since they need a closer look.
+
+`@nestjs/*` and `jose` majors are held back with an `ignore` entry and a comment naming the reason (12 is ESM-only while these services are CommonJS; `jose` ^5 is the last CommonJS major) — see the "Gotchas" section of CLAUDE.md. Bumping past those pins is a deliberate migration, not something to land as a routine dependency PR.
+
+Dependabot pushes to a branch in this repository (not a fork), so the existing `push` triggers on `services/*.yml` and the path filters in `.github/workflows/*.yml` fire normally — a Dependabot PR runs the same pipeline and dependency gate as any other change, no separate CI wiring needed.
+
 ## What this does not cover
 
 - Advisories that are not yet in the npm advisory database, and packages that are not in the lockfile: image contents are scanned by Trivy in the `image` job, an SBOM and a filesystem scan are [#32](https://github.com/veyselkaraca/platform-engineering-lab/issues/32).
-- Updating dependencies: [#31](https://github.com/veyselkaraca/platform-engineering-lab/issues/31).
 - License checks, and medium/low advisories as blocking.

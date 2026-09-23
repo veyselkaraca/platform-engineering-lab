@@ -1,0 +1,83 @@
+version: 2
+updates:
+  - package-ecosystem: "npm"
+    directory: "/services/api-gateway"
+    schedule:
+      interval: "weekly"
+    groups:
+      minor-patch:
+        update-types: ["minor", "patch"]
+    ignore:
+      - dependency-name: "@nestjs/*"
+        versions: [">=12"]
+        # 12 is ESM-only; these services are CommonJS (see CLAUDE.md)
+      - dependency-name: "jose"
+        versions: [">=6"]
+        # ^5 is the last CommonJS major; later majors are ESM-only
+
+  - package-ecosystem: "npm"
+    directory: "/services/order-service"
+    schedule:
+      interval: "weekly"
+    groups:
+      minor-patch:
+        update-types: ["minor", "patch"]
+    ignore:
+      - dependency-name: "@nestjs/*"
+        versions: [">=12"]
+      - dependency-name: "jose"
+        versions: [">=6"]
+
+  - package-ecosystem: "npm"
+    directory: "/services/notification-worker"
+    schedule:
+      interval: "weekly"
+    groups:
+      minor-patch:
+        update-types: ["minor", "patch"]
+    ignore:
+      - dependency-name: "@nestjs/*"
+        versions: [">=12"]
+      - dependency-name: "jose"
+        versions: [">=6"]
+
+  - package-ecosystem: "npm"
+    directory: "/services/user-service"
+    schedule:
+      interval: "weekly"
+    groups:
+      minor-patch:
+        update-types: ["minor", "patch"]
+    ignore:
+      - dependency-name: "@nestjs/*"
+        versions: [">=12"]
+      - dependency-name: "jose"
+        versions: [">=6"]
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    groups:
+      minor-patch:
+        update-types: ["minor", "patch"]
+
+  - package-ecosystem: "docker"
+    directory: "/services/api-gateway"
+    schedule:
+      interval: "weekly"
+
+  - package-ecosystem: "docker"
+    directory: "/services/order-service"
+    schedule:
+      interval: "weekly"
+
+  - package-ecosystem: "docker"
+    directory: "/services/notification-worker"
+    schedule:
+      interval: "weekly"
+
+  - package-ecosystem: "docker"
+    directory: "/services/user-service"
+    schedule:
+      interval: "weekly"
