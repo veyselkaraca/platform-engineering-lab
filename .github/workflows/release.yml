@@ -1,0 +1,82 @@
+# Release management (#35): release-please turns Conventional Commits since the last tag into a release
+# PR (version bump + CHANGELOG.md); merging it is the deliberate step (REL-7) that creates the vX.Y.Z tag
+# and the GitHub Release. The retag job then adds <service>:vX.Y.Z as a second tag on the SAME digest as
+# <service>:<commit-sha> for all four services -- images are never rebuilt for a release (#6, immutable artifacts).
+name: release
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    outputs:
+      released: ${{ steps.release.outputs.release_created }}
+      tag_name: ${{ steps.release.outputs.tag_name }}
+    steps:
+      - uses: googleapis/release-please-action@v4
+        id: release
+        with:
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+
+  # Runs only when the just-merged release PR produced a new tag (not on an ordinary push to main).
+  retag:
+    needs: release-please
+    if: needs.release-please.outputs.released == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      matrix:
+        service: [api-gateway, user-service, order-service, notification-worker]
+    env:
+      TAG: ${{ needs.release-please.outputs.tag_name }}
+    steps:
+      - name: Compute image name (GHCR requires lowercase)
+        run: echo "IMAGE=ghcr.io/${GITHUB_REPOSITORY,,}/${{ matrix.service }}" >> "$GITHUB_ENV"
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # The commit-SHA image is published by this same push's service pipeline, which can still be
+      # building when this job starts (GITHUB_TOKEN pushes/merges don't chain workflows, but the human
+      # merge that lands the release commit does trigger it, in parallel with this one) -- wait for it.
+      - name: Wait for the commit-SHA image to publish
+        run: |
+          ref="$IMAGE:${{ github.sha }}"
+          for i in $(seq 1 30); do
+            if docker buildx imagetools inspect "$ref" >/dev/null 2>&1; then
+              echo "found $ref"
+              exit 0
+            fi
+            echo "waiting for $ref ($i/30)"
+            sleep 20
+          done
+          echo "::error::$ref never appeared" >&2
+          exit 1
+
+      # Registry-only retag, no pull and no rebuild: same digest, second tag. imagetools create is
+      # idempotent, so re-running this step (e.g. after the step above times out once) is safe.
+      - name: Retag with the release version
+        run: docker buildx imagetools create -t "$IMAGE:$TAG" "$IMAGE:${{ github.sha }}"
+
+      - name: Record the retag
+        run: echo "Tagged \`$IMAGE:$TAG\` alongside \`$IMAGE:${{ github.sha }}\` (same digest)" >> "$GITHUB_STEP_SUMMARY"

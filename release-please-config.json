@@ -1,0 +1,31 @@
+{
+  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+  "bump-minor-pre-major": true,
+  "bump-patch-for-minor-pre-major": false,
+  "packages": {
+    ".": {
+      "release-type": "simple",
+      "include-component-in-tag": false,
+      "changelog-path": "CHANGELOG.md",
+      "extra-files": [
+        { "type": "json", "path": "services/api-gateway/package.json", "jsonpath": "$.version" },
+        { "type": "json", "path": "services/user-service/package.json", "jsonpath": "$.version" },
+        { "type": "json", "path": "services/order-service/package.json", "jsonpath": "$.version" },
+        { "type": "json", "path": "services/notification-worker/package.json", "jsonpath": "$.version" }
+      ],
+      "changelog-sections": [
+        { "type": "feat", "section": "Features" },
+        { "type": "fix", "section": "Bug Fixes" },
+        { "type": "perf", "section": "Performance" },
+        { "type": "ci", "section": "CI/CD" },
+        { "type": "build", "section": "CI/CD" },
+        { "type": "revert", "section": "Reverts" },
+        { "type": "docs", "hidden": true },
+        { "type": "style", "hidden": true },
+        { "type": "refactor", "hidden": true },
+        { "type": "test", "hidden": true },
+        { "type": "chore", "hidden": true }
+      ]
+    }
+  }
+}
