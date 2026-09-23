@@ -8,6 +8,8 @@ GitHub only runs workflows from `.github/workflows/`, so the executable definiti
 | `secret-scan.yml` | gitleaks over the whole git history on every push and pull request (no path filters), also called by `_service.yml` as the `secret-scan` job that the `image` job needs; fails on any finding (see [docs/security/secret-scanning.md](../../docs/security/secret-scanning.md)) |
 | `platform-tests.yml` | Whole-stack tests (integration, contract, end to end, telemetry pipeline, outage and alert scenarios) against docker compose with the observability profile, independent of any single service |
 | `user-service.yml`, `order-service.yml`, `notification-worker.yml`, `api-gateway.yml` | Thin callers: path filters and per-service inputs (`smoke-deps`, `smoke-urls`) |
+| `commit-lint.yml` | Every push, every branch, no path filter: fails on a commit subject that is not `type(scope)?: subject` (`security/commit-lint/gate.mjs`), so release-please can always compute a version from history. `git revert` and merge commits are exempt |
+| `release.yml` | Push to `main` only: release-please opens/updates the release PR from Conventional Commits; merging it creates the `vX.Y.Z` tag, GitHub Release and `CHANGELOG.md` entry, then `retag` adds `<service>:vX.Y.Z` on the same digest as `<service>:<commit-sha>` for all four services (see Registry, and `docs/operations/runbooks/release.md`) |
 
 ## Triggers and publishing
 
@@ -17,6 +19,7 @@ GitHub only runs workflows from `.github/workflows/`, so the executable definiti
 - **Build cache:** `cache-from`/`cache-to` (`type=gha`) are per branch: a branch reads `main`'s cache and writes its own copy, which counts toward the 10 GB repository limit (least recently used entries are evicted first, so the worst case is a slower build, never a failed one). If that ever bites, restrict `cache-to` to `main`.
 - **CodeQL** runs on branches too; results appear under the branch in the Security tab and the gate stays blocking.
 - A path-filtered workflow that is skipped reports no status, so these workflows cannot be required checks in branch protection (relevant for [#16](https://github.com/veyselkaraca/platform-engineering-lab/issues/16)).
+- **Release PRs:** `release.yml` needs the repository setting *Settings -> Actions -> General -> Workflow permissions -> Allow GitHub Actions to create and approve pull requests* enabled, or release-please cannot open its release PR. `GITHUB_TOKEN`-authored pushes/tags/releases do not themselves trigger other workflows; the human merge of the release PR is a normal push to `main`, which is what triggers the four service pipelines that `release.yml`'s `retag` job then waits on.
 
 ## Registry
 
@@ -26,6 +29,7 @@ GitHub only runs workflows from `.github/workflows/`, so the executable definiti
 - **Deploy by digest:** `Publish` writes `image@sha256:...` to the job summary and to the `image` output of `_service.yml`. Deploy and rollback stages ([#14](https://github.com/veyselkaraca/platform-engineering-lab/issues/14), [#15](https://github.com/veyselkaraca/platform-engineering-lab/issues/15)) reference that digest, never a tag. There is no `latest` or other mutable tag.
 - **Inspect:** `docker buildx imagetools inspect ghcr.io/veyselkaraca/platform-engineering-lab/<service>:<commit-sha>` shows the digest (log in with a token that has `read:packages` if the package is private). Packages are private by default; a cluster pulling them needs a pull secret (part of [#14](https://github.com/veyselkaraca/platform-engineering-lab/issues/14)).
 - **Retention:** published SHA images are not deleted; the previous known-good image is the rollback artifact.
+- **Release tag:** merging a release-please PR adds `<service>:vX.Y.Z` on the exact digest of the `<commit-sha>` tag already published for that commit (`docker buildx imagetools create`, registry-only, no pull, no rebuild; see `release.yml` and `docs/operations/runbooks/release.md`). It is a second, friendly tag; deploy and rollback keep using the digest, never `vX.Y.Z`, matching `docs/architecture/engineering-standards.md`.
 
 Adding a service means adding one small caller file. The smoke test runs the image under test inside the same compose stack developers use locally; only its dependencies (`smoke-deps`) are built from source and started next to it, so the published artifact is never rebuilt. The order-service and notification-worker pipelines follow an order end to end through user-service, RabbitMQ and the worker; the api-gateway pipeline runs the same flow through the gateway. Every smoke run also starts Keycloak (`keycloak` in `smoke-deps`) and uses real tokens from its dev realm; realm changes under `security/keycloak/` trigger the pipelines.
 

@@ -51,7 +51,9 @@ Against the running stack (dev users and tokens: [security/keycloak/README.md](s
 | Image scan (also a blocking gate in every service pipeline, [details](docs/security/image-scanning.md)) | `docker run --rm -v //var/run/docker.sock:/var/run/docker.sock -v "$PWD/security/image-scan:/ignore:ro" aquasec/trivy image --severity HIGH,CRITICAL --ignore-unfixed --scanners vuln,secret --ignorefile /ignore/.trivyignore <service>:local` (`api-gateway`, `user-service`, `order-service`, `notification-worker`) |
 | Secret scan (also a blocking gate on every push/PR and before every publish, [details](docs/security/secret-scanning.md)) | `sh security/secret-scan/scan.sh` (history scan) and `sh security/secret-scan/scan.sh canary` (config check); needs only Docker |
 
-Runbooks: [keycloak-outage](docs/operations/runbooks/keycloak-outage.md), [notification-dlq](docs/operations/runbooks/notification-dlq.md), [service-alerts](docs/operations/runbooks/service-alerts.md). CI: `.github/workflows/` (reusable `_service.yml`, per-service callers, `platform-tests.yml`).
+Runbooks: [keycloak-outage](docs/operations/runbooks/keycloak-outage.md), [notification-dlq](docs/operations/runbooks/notification-dlq.md), [service-alerts](docs/operations/runbooks/service-alerts.md), [release](docs/operations/runbooks/release.md). CI: `.github/workflows/` (reusable `_service.yml`, per-service callers, `platform-tests.yml`, `commit-lint.yml`, `release.yml`).
+
+Versioning and release history: commit messages follow [Conventional Commits](https://www.conventionalcommits.org) (enforced by `commit-lint.yml`); [CHANGELOG.md](CHANGELOG.md) and the [Releases page](../../releases) are generated from them by release-please, one version across all four services.
 
 ## Notes for contributors
 
