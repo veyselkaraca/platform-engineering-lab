@@ -33,9 +33,14 @@ jobs:
       released: ${{ steps.release.outputs.release_created }}
       tag_name: ${{ steps.release.outputs.tag_name }}
     steps:
+      # A PAT, not GITHUB_TOKEN: PRs opened with the default token are attributed to github-actions[bot],
+      # and GitHub then parks pull_request-triggered workflows on that PR (secret-scan included) in
+      # "action_required" instead of running them, needing a manual Approve-and-run click each time. A
+      # token tied to a real account is treated as a normal collaborator push, so checks run automatically.
       - uses: googleapis/release-please-action@v5
         id: release
         with:
+          token: ${{ secrets.RELEASE_PLEASE_TOKEN }}
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
 
