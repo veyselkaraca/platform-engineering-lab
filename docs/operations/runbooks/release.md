@@ -16,7 +16,7 @@ gh pr list --search "chore(main): release" --state open
 gh pr merge <pr-number> --squash
 ```
 
-Merging triggers, in parallel on the same push: the four service pipelines (build, scan, publish `<service>:<commit-sha>`) and the `release` workflow, whose `release-please` job creates the `vX.Y.Z` tag and GitHub Release now that the PR is merged, then the `retag` job waits for each `<service>:<commit-sha>` image and adds `<service>:vX.Y.Z` on the same digest.
+Merging triggers, in parallel on the same push: the four service pipelines (build, scan, publish `<service>:<commit-sha>`) and the `release` workflow. `release-please` creates the `vX.Y.Z` tag and a **draft** GitHub Release immediately (it does not wait on the four pipelines); `retag` waits for each `<service>:<commit-sha>` image and adds `<service>:vX.Y.Z` on the same digest; only once every service is retagged does `publish-release` undraft the Release. A release that never turns from draft to published means the artifacts were never confirmed — see §3.
 
 ## 2. Correct a release before it is tagged
 
@@ -36,15 +36,17 @@ gh run rerun <run-id> --failed
 
 - **Timed out waiting for `<service>:<commit-sha>`**: the release commit bumps every `services/*/package.json` (via `extra-files` in `release-please-config.json`), so it matches all four services' path filters and their pipelines always run — check `gh run list --workflow <service>.yml --branch main` for that commit; a failed or still-running pipeline is the usual cause. Fix or wait for it, then re-run the retag job.
 - **`docker buildx imagetools create` failed**: check the job log for the registry error; re-running is always safe once the underlying cause (auth, a transient GHCR error) is gone.
+- **Release stuck as a draft**: `retag` failed or is still running for at least one service — `gh release view <tag> --json isDraft` shows `true` until `publish-release` runs. Fix whatever `retag` reported, re-run the workflow (or just `publish-release` once every service is confirmed retagged: `gh run rerun <run-id> --job publish-release`); nothing else needs redoing.
 
 ## 4. Verify
 
 ```bash
 docker buildx imagetools inspect ghcr.io/<owner>/<repo>/<service>:vX.Y.Z --format '{{.Manifest.Digest}}'
 docker buildx imagetools inspect ghcr.io/<owner>/<repo>/<service>:<commit-sha> --format '{{.Manifest.Digest}}'
+gh release view <tag> --json isDraft --jq .isDraft   # false once every service retagged
 ```
 
-Both digests match for all four services. The GitHub Release and `CHANGELOG.md` entry exist on `main`.
+Both digests match for all four services. The GitHub Release is published (not a draft) and the `CHANGELOG.md` entry exists on `main`.
 
 ## After the tag exists
 

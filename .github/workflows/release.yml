@@ -1,7 +1,10 @@
 # Release management (#35): release-please turns Conventional Commits since the last tag into a release
 # PR (version bump + CHANGELOG.md); merging it is the deliberate step (REL-7) that creates the vX.Y.Z tag
-# and the GitHub Release. The retag job then adds <service>:vX.Y.Z as a second tag on the SAME digest as
-# <service>:<commit-sha> for all four services -- images are never rebuilt for a release (#6, immutable artifacts).
+# and a DRAFT GitHub Release. The retag job then adds <service>:vX.Y.Z as a second tag on the SAME digest
+# as <service>:<commit-sha> for all four services -- images are never rebuilt for a release (#6, immutable
+# artifacts). Only once every service has been retagged does publish-release undraft the GitHub Release:
+# the tag/PR merge don't wait on the four (separately triggered) service pipelines for that commit, so a
+# release must not look "done" until its artifacts are confirmed to exist.
 name: release
 
 on:
@@ -80,3 +83,17 @@ jobs:
 
       - name: Record the retag
         run: echo "Tagged \`$IMAGE:$TAG\` alongside \`$IMAGE:${{ github.sha }}\` (same digest)" >> "$GITHUB_STEP_SUMMARY"
+
+  # Only runs once every service above is confirmed retagged: this is what makes the release "real".
+  publish-release:
+    needs: [release-please, retag]
+    if: needs.release-please.outputs.released == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      TAG: ${{ needs.release-please.outputs.tag_name }}
+    steps:
+      - uses: actions/checkout@v4
+      - run: gh release edit "$TAG" --draft=false
