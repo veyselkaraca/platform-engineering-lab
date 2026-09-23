@@ -11,6 +11,14 @@ GitHub only runs workflows from `.github/workflows/`, so the executable definiti
 | `commit-lint.yml` | Every push, every branch, no path filter: fails on a commit subject that is not `type(scope)?: subject` (`security/commit-lint/gate.mjs`), so release-please can always compute a version from history. `git revert` and merge commits are exempt |
 | `release.yml` | Push to `main` only: release-please opens/updates the release PR from Conventional Commits; merging it creates the `vX.Y.Z` tag, GitHub Release and `CHANGELOG.md` entry, then `retag` adds `<service>:vX.Y.Z` on the same digest as `<service>:<commit-sha>` for all four services (see Registry, and `docs/operations/runbooks/release.md`) |
 
+## Keeping actions current
+
+`runs-on:` is pinned to `ubuntu-24.04` (not the moving `ubuntu-latest` label) and every third-party action is pinned to a release whose `action.yml` declares a supported Node runtime, everywhere in `.github/workflows/`, not only in the files a given issue happens to name. [#27](https://github.com/veyselkaraca/platform-engineering-lab/issues/27) fixed `_service.yml`, `platform-tests.yml` and `secret-scan.yml` first and missed `commit-lint.yml` and `release.yml`, added around the same time by unrelated work, because they weren't listed in the issue. Before closing a similar bump, check the whole directory, not the files named in the ticket:
+
+```bash
+grep -n "uses:\|runs-on:" .github/workflows/*.yml
+```
+
 ## Triggers and publishing
 
 - **Every branch:** a push to any branch runs the service pipelines (path filters kept) and `platform-tests.yml`, so a branch gets full CI feedback without a pull request. There is no `pull_request` trigger; the checks on a pull request are the runs on its head commit. They test the branch, not the merge result with `main`. Pull requests from forks get no CI (single-developer repository). If merge-result testing is wanted later, add `pull_request: branches: [main]` back with a shared concurrency group so a commit does not run twice. `workflow_dispatch` stays for manual runs.
