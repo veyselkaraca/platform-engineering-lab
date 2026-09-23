@@ -1,0 +1,31 @@
+# Commit message gate (#35): every pushed commit must follow Conventional Commits so release-please
+# can compute the next version and changelog from history. No path filter: it applies repo-wide,
+# including commits that touch no service. `git revert` and merge commits are exempt (security/commit-lint/gate.mjs).
+name: commit message gate
+
+on:
+  push:
+    branches: ['**']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: commit-lint-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Test the gate
+        run: node --test security/commit-lint/gate.test.mjs
+
+      - name: Lint pushed commit subjects
+        env:
+          COMMITS_JSON: ${{ toJson(github.event.commits) }}
+        run: |
+          echo "$COMMITS_JSON" | jq -r '(. // [])[] | .message | split("\n")[0]' | node security/commit-lint/gate.mjs
