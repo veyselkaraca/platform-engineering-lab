@@ -94,10 +94,13 @@ jobs:
           echo "::error::$ref never appeared" >&2
           exit 1
 
-      # Registry-only retag, no pull and no rebuild: same digest, second tag. imagetools create is
-      # idempotent, so re-running this step (e.g. after the step above times out once) is safe.
+      # Registry-only retag, no pull and no rebuild: same digest, second tag. --prefer-index=false is
+      # required -- with a single, single-platform source (which is what the build step produces),
+      # imagetools create defaults to wrapping it in a new index, which changes the digest (verified:
+      # v0.1.1 was first retagged without this flag and every service's digest came out different from
+      # its <commit-sha> tag). imagetools create is idempotent, so re-running this step is safe.
       - name: Retag with the release version
-        run: docker buildx imagetools create -t "$IMAGE:$TAG" "$IMAGE:${{ github.sha }}"
+        run: docker buildx imagetools create --prefer-index=false -t "$IMAGE:$TAG" "$IMAGE:${{ github.sha }}"
 
       - name: Record the retag
         run: echo "Tagged \`$IMAGE:$TAG\` alongside \`$IMAGE:${{ github.sha }}\` (same digest)" >> "$GITHUB_STEP_SUMMARY"
