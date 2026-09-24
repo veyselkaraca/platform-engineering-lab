@@ -16,6 +16,10 @@ export class CacheService implements OnModuleDestroy {
       maxRetriesPerRequest: 1,
       enableOfflineQueue: false, // fail fast while disconnected instead of queueing requests
       commandTimeout: 500,
+      // Explicit rather than ioredis's ~10s default (#72): a DNS lookup stuck on EAI_AGAIN right after the
+      // container restarts can otherwise leave a (re)connect attempt unsettled far longer than commandTimeout,
+      // which only bounds a command on an already-open connection.
+      connectTimeout: 2000,
       retryStrategy: (attempt) => Math.min(attempt * 200, 2000),
     });
     // Log state changes only, so a Redis outage is one line rather than one per reconnect attempt.
