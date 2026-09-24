@@ -85,7 +85,11 @@ jobs:
           node-version: 22
       - uses: ./.github/actions/build-compose-images
 
+      # No --profile observability here, so the otel-collector hostname never exists (not just "down"): without
+      # OTEL_SDK_DISABLED, every service repeats that lookup on every export interval for the job's whole duration.
       - name: Start the stack
+        env:
+          OTEL_SDK_DISABLED: "true"
         run: |
           sh scripts/bootstrap.sh
           docker compose -f infrastructure/docker/docker-compose.yml up -d --wait

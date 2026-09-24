@@ -16,6 +16,10 @@ x-auth-env: &auth-env
 x-otel-env: &otel-env
   # Telemetry (docs/features/observability): always on, exported to the collector. With the observability profile off
   # the collector does not exist and the bounded exports are simply dropped. OTEL_SERVICE_NAME is set per service.
+  # OTEL_SDK_DISABLED lets a long-running profile-less run (e.g. CI chaos jobs) opt out of the collector hostname
+  # never resolving at all instead of merely being down, which is otherwise a repeated DNS lookup every export
+  # interval for the run's whole duration (services/*/src/telemetry.ts).
+  OTEL_SDK_DISABLED: ${OTEL_SDK_DISABLED:-false}
   OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
   OTEL_SEMCONV_STABILITY_OPT_IN: http
   OTEL_TRACES_SAMPLER: ${OTEL_TRACES_SAMPLER:-parentbased_always_on}
