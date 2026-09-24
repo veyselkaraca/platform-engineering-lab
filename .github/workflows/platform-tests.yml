@@ -100,35 +100,6 @@ jobs:
       - name: Keycloak outage behavior
         run: sh tests/chaos/keycloak-outage.sh
 
-      # TEMPORARY diagnostic for #28: broker-failures.chaos.mjs's "broker down at publish" scenario connects to a
-      # just-stopped RabbitMQ container and consistently times out at ~91s despite CONNECT_TIMEOUT_MS=2000 in
-      # event-publisher.service.ts. Isolates whether the hang is at the raw TCP level (Docker/kernel networking) or
-      # specific to amqplib's timeout handling, so the follow-up fix targets the right layer. Remove once answered.
-      - name: DEBUG stopped-container connect timing
-        continue-on-error: true
-        run: |
-          docker compose -f infrastructure/docker/docker-compose.yml stop rabbitmq
-          echo "=== raw TCP connect() to the stopped container, no library involved ==="
-          timeout 115 docker compose -f infrastructure/docker/docker-compose.yml exec -T order-service node -e "
-            const net = require('net');
-            const start = Date.now();
-            const sock = net.createConnection({ host: 'rabbitmq', port: 5672 });
-            sock.on('error', (e) => console.log('RAW TCP error after', Date.now() - start, 'ms:', e.code, e.message));
-            sock.on('connect', () => { console.log('RAW TCP connected after', Date.now() - start, 'ms'); sock.end(); });
-            sock.on('close', () => console.log('RAW TCP closed after', Date.now() - start, 'ms'));
-          " || echo "raw TCP probe: still hanging past the 115s outer timeout"
-          echo "=== amqplib connect({ timeout: 2000 }), same call event-publisher.service.ts makes ==="
-          timeout 115 docker compose -f infrastructure/docker/docker-compose.yml exec -T order-service node -e "
-            const amqplib = require('amqplib');
-            const start = Date.now();
-            amqplib.connect(process.env.RABBITMQ_URL, { timeout: 2000 }).then(
-              (c) => { console.log('AMQPLIB connected after', Date.now() - start, 'ms (unexpected)'); c.close(); },
-              (e) => console.log('AMQPLIB rejected after', Date.now() - start, 'ms:', e.code || e.message)
-            );
-          " || echo "amqplib probe: still hanging past the 115s outer timeout"
-          docker compose -f infrastructure/docker/docker-compose.yml start rabbitmq
-          docker compose -f infrastructure/docker/docker-compose.yml up -d --wait
-
       - name: Broker, Redis, user-service and PostgreSQL failure behavior
         run: node --test --test-concurrency=1 tests/chaos/broker-failures.chaos.mjs tests/chaos/dependency-failures.chaos.mjs tests/chaos/database-failures.chaos.mjs
 
