@@ -7,6 +7,7 @@ runs:
   using: composite
   steps:
     - uses: docker/setup-buildx-action@v4
+      id: buildx
     - shell: bash
       run: |
         set -eu
@@ -20,3 +21,7 @@ runs:
             --load \
             "services/${service}"
         done
+    # The docker-container driver's buildkit container stays running for the rest of the job otherwise (#28
+    # investigation: diagnosing whether it competes with the compose stack for the rest of the job).
+    - shell: bash
+      run: docker buildx rm "${{ steps.buildx.outputs.name }}"
