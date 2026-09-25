@@ -1,5 +1,48 @@
 # Changelog
 
+## [0.2.0](https://github.com/veyselkaraca/platform-engineering-lab/compare/v0.1.1...v0.2.0) (2026-09-25)
+
+
+### Features
+
+* **ci:** automate dependency updates with Dependabot ([0b3dd92](https://github.com/veyselkaraca/platform-engineering-lab/commit/0b3dd92b6fa73d10c233dbeb35b7bf9d8e496d30))
+* **security:** generate an SBOM for each published image ([#76](https://github.com/veyselkaraca/platform-engineering-lab/issues/76)) ([5a1f8d3](https://github.com/veyselkaraca/platform-engineering-lab/commit/5a1f8d3231d11f2957db1271d9676a3c9460576a))
+* **security:** scope dependency-scan exceptions to individual services ([e525948](https://github.com/veyselkaraca/platform-engineering-lab/commit/e52594875367c1df9dec30121a6e86c60960d82a)), closes [#33](https://github.com/veyselkaraca/platform-engineering-lab/issues/33)
+
+
+### Bug Fixes
+
+* **ci:** hold back Node major bumps in Dependabot docker updates ([#66](https://github.com/veyselkaraca/platform-engineering-lab/issues/66)) ([d5b5457](https://github.com/veyselkaraca/platform-engineering-lab/commit/d5b54571a381939ef852b9bfd0bca5f6d74f088d))
+* **ci:** stabilize chaos-messaging-db reconnects and graceful shutdown ([2925c7e](https://github.com/veyselkaraca/platform-engineering-lab/commit/2925c7e02a9eed5eb8006e9abb685577615aa9f1))
+* **ci:** use a PAT for release-please so PR checks run automatically ([#67](https://github.com/veyselkaraca/platform-engineering-lab/issues/67)) ([12503e5](https://github.com/veyselkaraca/platform-engineering-lab/commit/12503e537c778e794b76a3525c4c97b2c88411ab))
+* **release:** preserve the exact digest when retagging ([#35](https://github.com/veyselkaraca/platform-engineering-lab/issues/35)) ([789df27](https://github.com/veyselkaraca/platform-engineering-lab/commit/789df271b48570a23552d39b13609fdd3909394a))
+* **release:** revert the draft-release gate and fix the retag status check ([#35](https://github.com/veyselkaraca/platform-engineering-lab/issues/35)) ([6ed9167](https://github.com/veyselkaraca/platform-engineering-lab/commit/6ed9167560fa2922cf0f7e15983029ed35d363b3))
+
+
+### CI/CD
+
+* bump commit-lint.yml and release.yml off Node 20 actions ([#42](https://github.com/veyselkaraca/platform-engineering-lab/issues/42)) ([197e521](https://github.com/veyselkaraca/platform-engineering-lab/commit/197e52121e7dd1d98b1d2edf933ee6976439ce06)), closes [#27](https://github.com/veyselkaraca/platform-engineering-lab/issues/27)
+* **codeql:** run CodeQL on every push, not just service paths ([5d3e549](https://github.com/veyselkaraca/platform-engineering-lab/commit/5d3e54939911469fd8a7fb5cd0ee760231dce398)), closes [#29](https://github.com/veyselkaraca/platform-engineering-lab/issues/29)
+* **deps-dev:** bump the minor-patch group across 1 directory with 2 updates ([#47](https://github.com/veyselkaraca/platform-engineering-lab/issues/47)) ([767604a](https://github.com/veyselkaraca/platform-engineering-lab/commit/767604a30f857e0d6db4508a609dd27bf0b9d7e7))
+* **deps-dev:** bump the minor-patch group across 1 directory with 2 updates ([#48](https://github.com/veyselkaraca/platform-engineering-lab/issues/48)) ([c4deac6](https://github.com/veyselkaraca/platform-engineering-lab/commit/c4deac6a27472f9431a93b3be09e59f0a5fc934f))
+* **deps-dev:** bump the minor-patch group across 1 directory with 2 updates ([#49](https://github.com/veyselkaraca/platform-engineering-lab/issues/49)) ([f75fd55](https://github.com/veyselkaraca/platform-engineering-lab/commit/f75fd55f2fad1c0919acbb52690ee72f0831fa9c))
+* **deps-dev:** bump the minor-patch group across 1 directory with 2 updates ([#51](https://github.com/veyselkaraca/platform-engineering-lab/issues/51)) ([73f6f2a](https://github.com/veyselkaraca/platform-engineering-lab/commit/73f6f2a5915ce72dc6996bae1a8382fc2c48dd44))
+* **deps:** bump actions/checkout from 6 to 7 ([#63](https://github.com/veyselkaraca/platform-engineering-lab/issues/63)) ([8be9c66](https://github.com/veyselkaraca/platform-engineering-lab/commit/8be9c6696a980f5fd3977702a7d9f4f26bb47ea9))
+* **deps:** bump actions/setup-node from 6 to 7 ([#65](https://github.com/veyselkaraca/platform-engineering-lab/issues/65)) ([7f72c8c](https://github.com/veyselkaraca/platform-engineering-lab/commit/7f72c8cf4c3d7be04149efae204d8b156c8e78ea))
+* **deps:** bump nestjs-pino from 4.6.1 to 5.2.0 in /services/api-gateway ([#58](https://github.com/veyselkaraca/platform-engineering-lab/issues/58)) ([f86d7e8](https://github.com/veyselkaraca/platform-engineering-lab/commit/f86d7e8545ea2bc744d04c5d95c9744d5e84113f))
+* **deps:** bump nestjs-pino from 4.6.1 to 5.2.0 in /services/notification-worker ([#54](https://github.com/veyselkaraca/platform-engineering-lab/issues/54)) ([43b47d6](https://github.com/veyselkaraca/platform-engineering-lab/commit/43b47d62cd6359ae7dc609d734f4bb7204f8792a))
+* **deps:** bump nestjs-pino from 4.6.1 to 5.2.0 in /services/order-service ([#55](https://github.com/veyselkaraca/platform-engineering-lab/issues/55)) ([a6cb2a9](https://github.com/veyselkaraca/platform-engineering-lab/commit/a6cb2a91a377d0ece237cf1c6f7be4b30e43ab20))
+* **deps:** bump nestjs-pino from 4.6.1 to 5.2.0 in /services/user-service ([#64](https://github.com/veyselkaraca/platform-engineering-lab/issues/64)) ([7267625](https://github.com/veyselkaraca/platform-engineering-lab/commit/7267625f8c843ce0efe59ac107dad632d5953992))
+* **deps:** bump nestjs-pino in /services/api-gateway ([f86d7e8](https://github.com/veyselkaraca/platform-engineering-lab/commit/f86d7e8545ea2bc744d04c5d95c9744d5e84113f))
+* **deps:** bump nestjs-pino in /services/notification-worker ([43b47d6](https://github.com/veyselkaraca/platform-engineering-lab/commit/43b47d62cd6359ae7dc609d734f4bb7204f8792a))
+* **deps:** bump nestjs-pino in /services/order-service ([a6cb2a9](https://github.com/veyselkaraca/platform-engineering-lab/commit/a6cb2a91a377d0ece237cf1c6f7be4b30e43ab20))
+* **deps:** bump nestjs-pino in /services/user-service ([7267625](https://github.com/veyselkaraca/platform-engineering-lab/commit/7267625f8c843ce0efe59ac107dad632d5953992))
+* **deps:** bump typeorm from 0.3.31 to 1.1.1 in /services/notification-worker ([#62](https://github.com/veyselkaraca/platform-engineering-lab/issues/62)) ([0158296](https://github.com/veyselkaraca/platform-engineering-lab/commit/0158296ddccdc59e86e463db90469b3bd5e65e79))
+* **deps:** bump typeorm from 0.3.31 to 1.1.1 in /services/order-service ([#57](https://github.com/veyselkaraca/platform-engineering-lab/issues/57)) ([7a7c819](https://github.com/veyselkaraca/platform-engineering-lab/commit/7a7c81906ba0fc6303a15c15bd81a9945caeed0c))
+* **deps:** bump typeorm from 0.3.31 to 1.1.1 in /services/user-service ([#56](https://github.com/veyselkaraca/platform-engineering-lab/issues/56)) ([cad5de4](https://github.com/veyselkaraca/platform-engineering-lab/commit/cad5de404a1488b49b77ec1079ca070eba9840e8))
+* **deps:** bump typeorm in /services/notification-worker ([0158296](https://github.com/veyselkaraca/platform-engineering-lab/commit/0158296ddccdc59e86e463db90469b3bd5e65e79))
+* **deps:** bump typeorm in /services/order-service ([7a7c819](https://github.com/veyselkaraca/platform-engineering-lab/commit/7a7c81906ba0fc6303a15c15bd81a9945caeed0c))
+
 ## [0.1.1](https://github.com/veyselkaraca/platform-engineering-lab/compare/v0.1.0...v0.1.1) (2026-09-23)
 
 
