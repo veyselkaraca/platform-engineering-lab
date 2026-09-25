@@ -1,6 +1,6 @@
 # Dependency scanning
 
-Requirements, design and test plan: [issue #3](https://github.com/veyselkaraca/platform-engineering-lab/issues/3) (gate), [#31](https://github.com/veyselkaraca/platform-engineering-lab/issues/31) (Dependabot) and [#33](https://github.com/veyselkaraca/platform-engineering-lab/issues/33) (per-service exceptions). Follow-up: [#32](https://github.com/veyselkaraca/platform-engineering-lab/issues/32) (SBOM, Trivy filesystem scan).
+Requirements, design and test plan: [issue #3](https://github.com/veyselkaraca/platform-engineering-lab/issues/3) (gate), [#31](https://github.com/veyselkaraca/platform-engineering-lab/issues/31) (Dependabot) and [#33](https://github.com/veyselkaraca/platform-engineering-lab/issues/33) (per-service exceptions). Sibling checks: [image scanning](image-scanning.md), [SBOM](sbom.md).
 
 ## What runs
 
@@ -79,5 +79,5 @@ Dependabot pushes to a branch in this repository (not a fork), so the existing `
 
 ## What this does not cover
 
-- Advisories that are not yet in the npm advisory database, and packages that are not in the lockfile: image contents are scanned by Trivy in the `image` job, an SBOM and a filesystem scan are [#32](https://github.com/veyselkaraca/platform-engineering-lab/issues/32).
+- Advisories that are not yet in the npm advisory database, and packages that are not in the lockfile: image contents are scanned by Trivy in the `image` job (see [image-scanning.md](image-scanning.md)); a Trivy filesystem scan was considered and deliberately not added, see [sbom.md](sbom.md#decisions).
 - License checks, and medium/low advisories as blocking.

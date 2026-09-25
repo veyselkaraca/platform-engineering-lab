@@ -116,6 +116,21 @@ jobs:
           trivyignores: security/image-scan/.trivyignore
           exit-code: "1"
 
+      # SBOM (#32): inventory of what the published image actually contains, kept as a run artifact
+      # (see docs/security/sbom.md for the decision not to publish it to GHCR). Not a gate.
+      - name: Generate SBOM
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: ${{ env.IMAGE }}:${{ github.sha }}
+          format: cyclonedx
+          output: sbom.cdx.json
+
+      - name: Upload SBOM
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom-${{ inputs.service }}-${{ github.sha }}
+          path: sbom.cdx.json
+
       # Verify the built artifact in the same runtime local development uses (docker compose).
       # The service under test runs from the image built above; only its dependencies are built here.
       - name: Smoke test image
