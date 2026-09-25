@@ -1,6 +1,6 @@
 # Image scanning
 
-Requirements: [issue #4](https://github.com/veyselkaraca/platform-engineering-lab/issues/4). Sibling checks: [dependency scanning](dependency-scanning.md), [static analysis](static-analysis.md). Follow-ups: [#32](https://github.com/veyselkaraca/platform-engineering-lab/issues/32) (SBOM, Trivy filesystem scan).
+Requirements: [issue #4](https://github.com/veyselkaraca/platform-engineering-lab/issues/4). Sibling checks: [dependency scanning](dependency-scanning.md), [static analysis](static-analysis.md), [SBOM](sbom.md).
 
 ## What runs
 
@@ -18,7 +18,7 @@ The same image that passed is the one pushed; it is never rebuilt after the scan
 | `trivyignores` | `security/image-scan/.trivyignore` | Accepted findings, see below |
 | `exit-code` | `1` | The step is the gate: findings fail the job |
 
-Not covered: MEDIUM/LOW findings and unfixed ones (not blocking, not reported by this step), misconfiguration scanning, SBOM ([#32](https://github.com/veyselkaraca/platform-engineering-lab/issues/32)). The scan sees what is in the image at build time; a vulnerability published later is only found the next time a pipeline runs.
+Not covered: MEDIUM/LOW findings and unfixed ones (not blocking, not reported by this step), misconfiguration scanning. An SBOM of the same image is generated separately, see [sbom.md](sbom.md). The scan sees what is in the image at build time; a vulnerability published later is only found the next time a pipeline runs.
 
 ## When the gate fails
 
