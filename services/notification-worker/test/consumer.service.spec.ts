@@ -216,4 +216,91 @@ describe('ConsumerService reconnect bound (#72)', () => {
 
     await consumer.onModuleDestroy();
   }, 10_000);
+
+  // A live run reproduced the SIGTERM-while-busy chaos scenario failing (exit 137) with total silence in the
+  // logs for the whole 10s grace period: channel.cancel() has no timeout option of its own and was blocking
+  // onModuleDestroy before it ever reached the drain step. Docker kills the container long before an unbounded
+  // wait here would ever give up on its own, so this must stay bounded regardless of what the broker does.
+  it('does not let a channel.cancel() that never settles block shutdown', async () => {
+    const closeHandlers: Array<() => void> = [];
+    const channel = {
+      on: jest.fn(),
+      once: jest.fn(),
+      prefetch: jest.fn().mockResolvedValue(undefined),
+      consume: jest.fn().mockResolvedValue({ consumerTag: 'tag-1' }),
+      cancel: jest.fn(() => new Promise(() => {})),
+    };
+    const conn = {
+      on: jest.fn(),
+      once: jest.fn((event: string, cb: () => void) => {
+        if (event === 'close') closeHandlers.push(cb);
+      }),
+      close: jest.fn(() => {
+        closeHandlers.forEach((cb) => cb());
+        return Promise.resolve();
+      }),
+      createConfirmChannel: jest.fn().mockResolvedValue(channel),
+    };
+    connectMock.mockResolvedValue(conn);
+    jest.spyOn(Logger.prototype, 'warn').mockImplementation();
+    jest.spyOn(Logger.prototype, 'log').mockImplementation();
+    const consumer = worker();
+
+    consumer.onApplicationBootstrap();
+    await new Promise((resolve) => {
+      const check = setInterval(() => {
+        if (consumer.isConnected()) {
+          clearInterval(check);
+          resolve(undefined);
+        }
+      }, 10);
+    });
+
+    const started = Date.now();
+    await consumer.onModuleDestroy();
+
+    expect(channel.cancel).toHaveBeenCalledWith('tag-1');
+    expect(Date.now() - started).toBeLessThan(3000);
+  }, 10_000);
+
+  // The previous test's mocked close() fires the 'close' event itself, so it also proves consumeUntilClosed's
+  // `closed` promise settles and `this.loop` unblocks -- masking that `await this.loop` had no bound of its own.
+  // A live run still hit 137 after that fix landed: a connection.close() that never truly settles (broker
+  // unresponsive, half-open socket) never fires 'close' either, so `closed` -- and therefore `this.loop` --
+  // would wait forever without this bound.
+  it('does not let a connection.close() that never fires "close" block shutdown', async () => {
+    const channel = {
+      on: jest.fn(),
+      once: jest.fn(),
+      prefetch: jest.fn().mockResolvedValue(undefined),
+      consume: jest.fn().mockResolvedValue({ consumerTag: 'tag-1' }),
+      cancel: jest.fn().mockResolvedValue(undefined),
+    };
+    const conn = {
+      on: jest.fn(),
+      once: jest.fn(), // 'close' handlers registered but never invoked
+      close: jest.fn(() => new Promise(() => {})),
+      createConfirmChannel: jest.fn().mockResolvedValue(channel),
+    };
+    connectMock.mockResolvedValue(conn);
+    jest.spyOn(Logger.prototype, 'warn').mockImplementation();
+    jest.spyOn(Logger.prototype, 'log').mockImplementation();
+    jest.spyOn(Logger.prototype, 'debug').mockImplementation();
+    const consumer = worker();
+
+    consumer.onApplicationBootstrap();
+    await new Promise((resolve) => {
+      const check = setInterval(() => {
+        if (consumer.isConnected()) {
+          clearInterval(check);
+          resolve(undefined);
+        }
+      }, 10);
+    });
+
+    const started = Date.now();
+    await consumer.onModuleDestroy();
+
+    expect(Date.now() - started).toBeLessThan(4000);
+  }, 10_000);
 });

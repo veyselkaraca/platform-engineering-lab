@@ -9,10 +9,27 @@ import { DLQ, MAIN_QUEUE } from './topology';
 
 const CONNECT_TIMEOUT_MS = 2000;
 const CONFIRM_TIMEOUT_MS = 2000;
-const DRAIN_TIMEOUT_MS = 10_000;
+// Docker's SIGTERM grace period defaults to 10s and is not overridden in docker-compose.yml, and NestJS runs
+// onApplicationShutdown (telemetry.lifecycle.ts's flush, up to SHUTDOWN_TIMEOUT_MS) strictly after onModuleDestroy
+// resolves -- not concurrently with it. onModuleDestroy below spends up to CANCEL + DRAIN + CLOSE; that sum, plus
+// whatever onApplicationShutdown adds on top, must still land comfortably under 10s or it is a coin flip against
+// SIGKILL rather than a bound.
+const CANCEL_TIMEOUT_MS = 1000;
+const DRAIN_TIMEOUT_MS = 5_000;
+const CLOSE_TIMEOUT_MS = 1000;
+const LOOP_TIMEOUT_MS = 1000;
 const MAX_BACKOFF_MS = 10_000;
 
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms).unref());
+
+// A broker RPC (channel.cancel, connection.close) waits for the server's ack and has no timeout option of its
+// own; under load it can sit unresolved for the whole SIGTERM grace period with nothing logged, silently
+// consuming the entire budget DRAIN_TIMEOUT_MS above was supposed to bound. Race it instead, and swallow a late
+// settlement so it cannot become an unhandled rejection once nothing is still awaiting it.
+function withTimeout(promise: Promise<unknown>, ms: number): Promise<unknown> {
+  promise.catch(() => undefined);
+  return Promise.race([promise, new Promise((resolve) => setTimeout(resolve, ms).unref())]);
+}
 
 // RabbitMQ records every dead-lettering in the x-death header. Rejections from the main queue are our failed attempts.
 export function failedAttempts(msg: ConsumeMessage): number {
@@ -170,7 +187,10 @@ export class ConsumerService implements OnApplicationBootstrap, OnModuleDestroy 
       this.conn = undefined;
       this.channel = undefined;
       this.consumerTag = undefined;
-      await conn.close().catch((err: Error) => this.log.debug(`close after session end: ${err.message}`));
+      // onModuleDestroy's own close() (bounded, below) is what makes `closed` resolve during shutdown in the
+      // first place, so this one is usually a fast no-op on an already-closing connection -- but it has no
+      // timeout of its own either, and onModuleDestroy's `await this.loop` blocks on this whole method returning.
+      await withTimeout(conn.close(), CLOSE_TIMEOUT_MS).catch((err: Error) => this.log.debug(`close after session end: ${err.message}`));
     }
   }
 
@@ -202,16 +222,19 @@ export class ConsumerService implements OnApplicationBootstrap, OnModuleDestroy 
     this.stopping = true;
     this.wake?.();
     try {
-      if (this.channel && this.consumerTag) await this.channel.cancel(this.consumerTag);
+      if (this.channel && this.consumerTag) await withTimeout(this.channel.cancel(this.consumerTag), CANCEL_TIMEOUT_MS);
     } catch (err) {
       this.log.warn(`cancel consumer failed: ${(err as Error).message}`);
     }
     await Promise.race([Promise.allSettled([...this.inFlight]), sleep(DRAIN_TIMEOUT_MS)]);
     try {
-      await this.conn?.close();
+      if (this.conn) await withTimeout(this.conn.close(), CLOSE_TIMEOUT_MS);
     } catch (err) {
       this.log.warn(`RabbitMQ close failed: ${(err as Error).message}`);
     }
-    await this.loop;
+    // Normally resolves right behind the close() above (it is what makes consumeUntilClosed's `closed` promise
+    // settle), but that chain has no bound of its own if the 'close' event never actually fires. This is the
+    // last of the shutdown steps, so a bound here is what makes the whole method's worst case finite.
+    if (this.loop) await withTimeout(this.loop, LOOP_TIMEOUT_MS);
   }
 }
