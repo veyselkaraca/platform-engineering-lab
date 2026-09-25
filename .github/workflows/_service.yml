@@ -57,27 +57,14 @@ jobs:
         run: node ../../security/dependency-scan/gate.mjs "$RUNNER_TEMP/audit.json"
 
   # SAST (ADR-002): findings go to the Security tab and any high/critical one fails the pipeline.
+  # Own workflow (#29) so it also runs on pushes that only touch tests/** and on a schedule; called here so
+  # image still waits on the same-commit result, same pattern as secret-scan below.
   codeql:
-    runs-on: ubuntu-24.04
+    uses: ./.github/workflows/codeql.yml
     permissions:
       contents: read
       security-events: write
       actions: read
-    steps:
-      - uses: actions/checkout@v7
-      - uses: github/codeql-action/init@v4
-        with:
-          languages: javascript-typescript
-          build-mode: none
-          config-file: ./security/sast/codeql-config.yml
-      - uses: github/codeql-action/analyze@v4
-        with:
-          output: sarif-results
-      - name: Test the gate
-        run: node --test security/sast/gate.test.mjs
-      # analyze uploads the results but never fails on them; this step is the gate.
-      - name: Fail on high/critical findings
-        run: node security/sast/gate.mjs sarif-results/*.sarif
 
   # Secret scan (#5): the same workflow that runs on every push and PR; a leak also stops the publish.
   secret-scan:

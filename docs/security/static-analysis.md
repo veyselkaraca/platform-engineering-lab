@@ -4,9 +4,11 @@ Decision and alternatives: [ADR-002](../decisions/ADR-002-static-analysis.md). R
 
 ## What runs
 
-CodeQL (`security-extended` query suite, JavaScript/TypeScript) runs in the `codeql` job of `.github/workflows/_service.yml`, in parallel with `verify`. Findings are uploaded to the repository Security tab and any high or critical one fails the pipeline. The image build waits for the job:
+CodeQL (`security-extended` query suite, JavaScript/TypeScript) runs in its own workflow, `.github/workflows/codeql.yml`: on every push (no path filter, unlike the service pipelines), on a weekly schedule (`0 6 * * 1`, so new CodeQL queries also report on code nobody touched), on `workflow_dispatch`, and as a `workflow_call` from the `codeql` job of `.github/workflows/_service.yml` (in parallel with `verify`), which is how each service pipeline still waits on the same-commit result. Findings are uploaded to the repository Security tab and any high or critical one fails whichever run found it:
 
 `verify` + `codeql` + `secret-scan` -> image build -> Trivy -> smoke test -> publish
+
+Splitting the trigger out this way (#29) is what lets a change under `tests/**` — outside every service pipeline's path filter — still get a CodeQL run, without adding `tests/**` to those filters and rebuilding all four service images for a test-only change. The cost: a push that also triggers one or more service pipelines (e.g. a `services/user-service/**` change) now gets more than one CodeQL run on the same commit — one from the standalone `push` trigger and one per triggered pipeline's `workflow_call`. This is the same trade-off already accepted for `secret-scan.yml`; CodeQL analyzes the whole repository regardless of which service changed, so this was already redundant across services before #29, just not across the extra standalone run.
 
 The three scanners in the pipeline fail at the same level:
 
@@ -25,7 +27,7 @@ The `analyze` action uploads results but never fails on them. The job therefore 
 - It fails closed: no SARIF file, or one that cannot be parsed, exits 1.
 - The job runs `node --test security/sast/gate.test.mjs` first: blocking and non-blocking scores, rules read from the driver and from query-pack extensions, suppressions, the threshold override, and the exit codes of the command line.
 
-CodeQL analyzes the whole repository in each service pipeline, so a blocking finding in one service fails every service pipeline that runs until it is fixed.
+CodeQL analyzes the whole repository on every run, so a blocking finding in one service fails every run until it is fixed: the standalone `push` run, and every service pipeline that runs.
 
 ## When the gate fails
 

@@ -1,0 +1,38 @@
+# Static analysis (ADR-002): CodeQL over the whole repository on every push and on a schedule, so a change under
+# tests/** (outside every service pipeline's path filter) still gets scanned, and new CodeQL queries also report on
+# unchanged code (#29). Called by _service.yml's `codeql` job too, so an image still waits on the same-commit result.
+# No concurrency group on purpose: the service pipelines call this workflow too, and a shared group would cancel their runs.
+name: codeql
+
+on:
+  push:
+  schedule:
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  codeql:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
+    steps:
+      - uses: actions/checkout@v7
+      - uses: github/codeql-action/init@v4
+        with:
+          languages: javascript-typescript
+          build-mode: none
+          config-file: ./security/sast/codeql-config.yml
+      - uses: github/codeql-action/analyze@v4
+        with:
+          output: sarif-results
+      - name: Test the gate
+        run: node --test security/sast/gate.test.mjs
+      # analyze uploads the results but never fails on them; this step is the gate.
+      - name: Fail on high/critical findings
+        run: node security/sast/gate.mjs sarif-results/*.sarif
