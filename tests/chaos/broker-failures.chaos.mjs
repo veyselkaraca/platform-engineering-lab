@@ -121,7 +121,11 @@ describe('async path under failure', { concurrency: false }, () => {
 
     docker('start', 'notification-worker');
     const count = () => Number(sql(`SELECT count(*) FROM notifications WHERE user_id = '${userId}'`));
-    await eventually(() => count() >= 50, { timeoutMs: 60_000, intervalMs: 100 });
+    // A low threshold caught the worker within its first poll tick after a cold start (DB pool, JIT still
+    // settling), so close to no real margin was left before the SIGTERM below. A quarter of N still leaves a
+    // large in-flight backlog to prove a genuine mid-run kill, while requiring enough processing for the worker
+    // to reach steady state first.
+    await eventually(() => count() >= 750, { timeoutMs: 60_000, intervalMs: 100 });
     docker('stop', 'notification-worker'); // SIGTERM, 10 s grace (compose default)
 
     const container = docker('ps', '-a', '-q', 'notification-worker').trim();

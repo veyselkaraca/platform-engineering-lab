@@ -21,7 +21,10 @@ import { NodeSDK } from '@opentelemetry/sdk-node';
 
 const EXPORT_TIMEOUT_MS = 3000;
 const METRIC_INTERVAL_MS = 15_000;
-export const SHUTDOWN_TIMEOUT_MS = 5000;
+// Runs in onApplicationShutdown, strictly after ConsumerService's onModuleDestroy drain (up to DRAIN_TIMEOUT_MS)
+// has already resolved -- the two are sequential, not concurrent. Kept short so the pair together still lands
+// under Docker's 10s default SIGTERM grace period (consumer.service.ts has the full accounting).
+export const SHUTDOWN_TIMEOUT_MS = 2000;
 
 const disabled = process.env.OTEL_SDK_DISABLED === 'true';
 const isProbe = (url?: string) => url === '/health' || (url?.startsWith('/health/') ?? false);

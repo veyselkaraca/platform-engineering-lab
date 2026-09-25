@@ -60,7 +60,7 @@ export class EventPublisher implements OnModuleDestroy {
   }
 
   private async open(): Promise<ConfirmChannel> {
-    const conn = await connect(this.config.get('RABBITMQ_URL'), { timeout: CONNECT_TIMEOUT_MS });
+    const conn = await this.connectWithTimeout();
     // Without an error listener a broker-initiated error would crash the process.
     conn.on('error', (err) => this.log.warn(`RabbitMQ connection error: ${err.message}`));
     conn.on('close', () => {
@@ -81,6 +81,22 @@ export class EventPublisher implements OnModuleDestroy {
       await conn.close().catch((closeErr: Error) => this.log.debug(`close after failed open: ${closeErr.message}`));
       throw err;
     }
+  }
+
+  // amqplib's own `timeout` option does not bound a DNS lookup stuck retrying (observed: EAI_AGAIN right after the
+  // broker container restarts can keep `connect()` unsettled for 90+ seconds instead of failing in ~2s). Node's
+  // dns.lookup() cannot be cancelled once started, so race it against an explicit timer instead: if the timer wins,
+  // the caller sees a bounded failure while the orphaned attempt is closed if it ever does settle.
+  private connectWithTimeout(): Promise<ChannelModel> {
+    const attempt = connect(this.config.get('RABBITMQ_URL'), { timeout: CONNECT_TIMEOUT_MS });
+    const timeout = new Promise<never>((_, reject) => {
+      const timer = setTimeout(() => reject(new Error('connect ETIMEDOUT (outer bound)')), CONNECT_TIMEOUT_MS);
+      timer.unref();
+    });
+    return Promise.race([attempt, timeout]).catch((err) => {
+      attempt.then((conn) => conn.close().catch(() => undefined)).catch(() => undefined);
+      throw err;
+    });
   }
 
   async onModuleDestroy(): Promise<void> {

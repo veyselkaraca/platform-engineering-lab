@@ -7,6 +7,10 @@ import { ConsumerService, failedAttempts } from '../src/messaging/consumer.servi
 import { DLQ, MAIN_QUEUE } from '../src/messaging/topology';
 import { NotificationsService } from '../src/notifications/notifications.service';
 
+const brokerConn = { on: jest.fn(), createConfirmChannel: jest.fn(), close: jest.fn().mockResolvedValue(undefined) };
+const connectMock = jest.fn();
+jest.mock('amqplib', () => ({ connect: (...args: unknown[]) => connectMock(...args) }));
+
 const ID = '3f6c1c2e-8a3b-4f0e-9d55-0c1d2e3f4a5b';
 const event = { eventId: ID, type: 'order.created', correlationId: 'req-1', data: { orderId: ID, userId: ID } };
 const MAX_ATTEMPTS = 3;
@@ -171,4 +175,132 @@ describe('ConsumerService.handleMessage', () => {
     expect(ch.ack).not.toHaveBeenCalled();
     expect(ch.nack).toHaveBeenCalledWith(msg, false, false);
   });
+});
+
+describe('ConsumerService reconnect bound (#72)', () => {
+  const config = { get: (k: string) => ({ RABBITMQ_URL: 'amqp://x', WORKER_PREFETCH: 10, MAX_ATTEMPTS }[k]) };
+  const worker = () => new ConsumerService(config as unknown as ConfigService<never, true>, { record: jest.fn() } as unknown as NotificationsService);
+
+  beforeEach(() => jest.clearAllMocks());
+  afterEach(() => jest.restoreAllMocks());
+
+  // #72: a DNS lookup stuck on EAI_AGAIN right after the broker container restarts left connect() unsettled for
+  // 90+ seconds in CI, because amqplib's own `timeout` option does not bound the lookup. This is the same gap
+  // event-publisher.service.spec.ts covers for order-service, mirrored here for the worker's own connect().
+  it('bounds a connect() that never settles instead of leaving readiness stuck', async () => {
+    connectMock.mockImplementation(() => new Promise(() => {}));
+    const warned = jest.spyOn(Logger.prototype, 'warn').mockImplementation();
+    const consumer = worker();
+
+    consumer.onApplicationBootstrap();
+    await new Promise((resolve) => setTimeout(resolve, 2200));
+
+    expect(warned).toHaveBeenCalledWith(expect.stringContaining('connect ETIMEDOUT (outer bound)'));
+    expect(consumer.isConnected()).toBe(false);
+
+    await consumer.onModuleDestroy();
+  }, 10_000);
+
+  it('closes a connection that arrives late, after the outer bound already gave up', async () => {
+    let resolveLate!: (c: typeof brokerConn) => void;
+    connectMock.mockImplementation(() => new Promise((resolve) => { resolveLate = resolve; }));
+    jest.spyOn(Logger.prototype, 'warn').mockImplementation();
+    const consumer = worker();
+
+    consumer.onApplicationBootstrap();
+    await new Promise((resolve) => setTimeout(resolve, 2200));
+    resolveLate(brokerConn);
+    await new Promise(setImmediate);
+
+    expect(brokerConn.close).toHaveBeenCalled();
+
+    await consumer.onModuleDestroy();
+  }, 10_000);
+
+  // A live run reproduced the SIGTERM-while-busy chaos scenario failing (exit 137) with total silence in the
+  // logs for the whole 10s grace period: channel.cancel() has no timeout option of its own and was blocking
+  // onModuleDestroy before it ever reached the drain step. Docker kills the container long before an unbounded
+  // wait here would ever give up on its own, so this must stay bounded regardless of what the broker does.
+  it('does not let a channel.cancel() that never settles block shutdown', async () => {
+    const closeHandlers: Array<() => void> = [];
+    const channel = {
+      on: jest.fn(),
+      once: jest.fn(),
+      prefetch: jest.fn().mockResolvedValue(undefined),
+      consume: jest.fn().mockResolvedValue({ consumerTag: 'tag-1' }),
+      cancel: jest.fn(() => new Promise(() => {})),
+    };
+    const conn = {
+      on: jest.fn(),
+      once: jest.fn((event: string, cb: () => void) => {
+        if (event === 'close') closeHandlers.push(cb);
+      }),
+      close: jest.fn(() => {
+        closeHandlers.forEach((cb) => cb());
+        return Promise.resolve();
+      }),
+      createConfirmChannel: jest.fn().mockResolvedValue(channel),
+    };
+    connectMock.mockResolvedValue(conn);
+    jest.spyOn(Logger.prototype, 'warn').mockImplementation();
+    jest.spyOn(Logger.prototype, 'log').mockImplementation();
+    const consumer = worker();
+
+    consumer.onApplicationBootstrap();
+    await new Promise((resolve) => {
+      const check = setInterval(() => {
+        if (consumer.isConnected()) {
+          clearInterval(check);
+          resolve(undefined);
+        }
+      }, 10);
+    });
+
+    const started = Date.now();
+    await consumer.onModuleDestroy();
+
+    expect(channel.cancel).toHaveBeenCalledWith('tag-1');
+    expect(Date.now() - started).toBeLessThan(3000);
+  }, 10_000);
+
+  // The previous test's mocked close() fires the 'close' event itself, so it also proves consumeUntilClosed's
+  // `closed` promise settles and `this.loop` unblocks -- masking that `await this.loop` had no bound of its own.
+  // A live run still hit 137 after that fix landed: a connection.close() that never truly settles (broker
+  // unresponsive, half-open socket) never fires 'close' either, so `closed` -- and therefore `this.loop` --
+  // would wait forever without this bound.
+  it('does not let a connection.close() that never fires "close" block shutdown', async () => {
+    const channel = {
+      on: jest.fn(),
+      once: jest.fn(),
+      prefetch: jest.fn().mockResolvedValue(undefined),
+      consume: jest.fn().mockResolvedValue({ consumerTag: 'tag-1' }),
+      cancel: jest.fn().mockResolvedValue(undefined),
+    };
+    const conn = {
+      on: jest.fn(),
+      once: jest.fn(), // 'close' handlers registered but never invoked
+      close: jest.fn(() => new Promise(() => {})),
+      createConfirmChannel: jest.fn().mockResolvedValue(channel),
+    };
+    connectMock.mockResolvedValue(conn);
+    jest.spyOn(Logger.prototype, 'warn').mockImplementation();
+    jest.spyOn(Logger.prototype, 'log').mockImplementation();
+    jest.spyOn(Logger.prototype, 'debug').mockImplementation();
+    const consumer = worker();
+
+    consumer.onApplicationBootstrap();
+    await new Promise((resolve) => {
+      const check = setInterval(() => {
+        if (consumer.isConnected()) {
+          clearInterval(check);
+          resolve(undefined);
+        }
+      }, 10);
+    });
+
+    const started = Date.now();
+    await consumer.onModuleDestroy();
+
+    expect(Date.now() - started).toBeLessThan(4000);
+  }, 10_000);
 });
