@@ -12,10 +12,17 @@ x-auth-env: &auth-env
   AUTH_AUDIENCE: platform-api
   AUTH_JWKS_URL: http://keycloak:8080/realms/platform-lab/protocol/openid-connect/certs
   AUTH_JWKS_CACHE_SECONDS: ${AUTH_JWKS_CACHE_SECONDS:-3600}
+  # 2s is comfortable for Keycloak's own response time; overridable for a run that also has heavy concurrent
+  # container churn competing for the same runner's CPU (platform-tests.yml's chaos-messaging-db job).
+  AUTH_JWKS_TIMEOUT_MS: ${AUTH_JWKS_TIMEOUT_MS:-2000}
 
 x-otel-env: &otel-env
   # Telemetry (docs/features/observability): always on, exported to the collector. With the observability profile off
   # the collector does not exist and the bounded exports are simply dropped. OTEL_SERVICE_NAME is set per service.
+  # OTEL_SDK_DISABLED lets a long-running profile-less run (e.g. CI chaos jobs) opt out of the collector hostname
+  # never resolving at all instead of merely being down, which is otherwise a repeated DNS lookup every export
+  # interval for the run's whole duration (services/*/src/telemetry.ts).
+  OTEL_SDK_DISABLED: ${OTEL_SDK_DISABLED:-false}
   OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
   OTEL_SEMCONV_STABILITY_OPT_IN: http
   OTEL_TRACES_SAMPLER: ${OTEL_TRACES_SAMPLER:-parentbased_always_on}

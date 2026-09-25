@@ -78,6 +78,18 @@ jobs:
 
   chaos-messaging-db:
     runs-on: ubuntu-24.04
+    # No --profile observability here, so the otel-collector hostname never exists (not just "down"): without
+    # OTEL_SDK_DISABLED, every service repeats that lookup on every export interval for the job's whole duration.
+    # AUTH_JWKS_TIMEOUT_MS: this job's heavy concurrent container churn (postgres/rabbitmq/notification-worker
+    # stopped and started repeatedly by the chaos scenarios below) competes with Keycloak for the runner's CPU;
+    # the 2s production default occasionally isn't enough here even though Keycloak itself is healthy.
+    # Job-level, not just on the "Start the stack" step: broker-failures.chaos.mjs's own before() hook re-runs
+    # `docker compose up -d --wait` (no service arg) from the later test step's shell, which has no env override
+    # of its own -- compose then sees the config differ from what's running and silently recreates every
+    # container back to these defaults, undoing a step-scoped override before the chaos scenarios even start.
+    env:
+      OTEL_SDK_DISABLED: "true"
+      AUTH_JWKS_TIMEOUT_MS: "8000"
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
