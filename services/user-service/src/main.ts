@@ -16,4 +16,3 @@ async function bootstrap() {
 }
 
 void bootstrap();
-// touch 2: verify #69's shared GHA cache scope across _service.yml and platform-tests.yml
