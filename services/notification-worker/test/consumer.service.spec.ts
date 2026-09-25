@@ -7,6 +7,10 @@ import { ConsumerService, failedAttempts } from '../src/messaging/consumer.servi
 import { DLQ, MAIN_QUEUE } from '../src/messaging/topology';
 import { NotificationsService } from '../src/notifications/notifications.service';
 
+const brokerConn = { on: jest.fn(), createConfirmChannel: jest.fn(), close: jest.fn().mockResolvedValue(undefined) };
+const connectMock = jest.fn();
+jest.mock('amqplib', () => ({ connect: (...args: unknown[]) => connectMock(...args) }));
+
 const ID = '3f6c1c2e-8a3b-4f0e-9d55-0c1d2e3f4a5b';
 const event = { eventId: ID, type: 'order.created', correlationId: 'req-1', data: { orderId: ID, userId: ID } };
 const MAX_ATTEMPTS = 3;
@@ -171,4 +175,45 @@ describe('ConsumerService.handleMessage', () => {
     expect(ch.ack).not.toHaveBeenCalled();
     expect(ch.nack).toHaveBeenCalledWith(msg, false, false);
   });
+});
+
+describe('ConsumerService reconnect bound (#72)', () => {
+  const config = { get: (k: string) => ({ RABBITMQ_URL: 'amqp://x', WORKER_PREFETCH: 10, MAX_ATTEMPTS }[k]) };
+  const worker = () => new ConsumerService(config as unknown as ConfigService<never, true>, { record: jest.fn() } as unknown as NotificationsService);
+
+  beforeEach(() => jest.clearAllMocks());
+  afterEach(() => jest.restoreAllMocks());
+
+  // #72: a DNS lookup stuck on EAI_AGAIN right after the broker container restarts left connect() unsettled for
+  // 90+ seconds in CI, because amqplib's own `timeout` option does not bound the lookup. This is the same gap
+  // event-publisher.service.spec.ts covers for order-service, mirrored here for the worker's own connect().
+  it('bounds a connect() that never settles instead of leaving readiness stuck', async () => {
+    connectMock.mockImplementation(() => new Promise(() => {}));
+    const warned = jest.spyOn(Logger.prototype, 'warn').mockImplementation();
+    const consumer = worker();
+
+    consumer.onApplicationBootstrap();
+    await new Promise((resolve) => setTimeout(resolve, 2200));
+
+    expect(warned).toHaveBeenCalledWith(expect.stringContaining('connect ETIMEDOUT (outer bound)'));
+    expect(consumer.isConnected()).toBe(false);
+
+    await consumer.onModuleDestroy();
+  }, 10_000);
+
+  it('closes a connection that arrives late, after the outer bound already gave up', async () => {
+    let resolveLate!: (c: typeof brokerConn) => void;
+    connectMock.mockImplementation(() => new Promise((resolve) => { resolveLate = resolve; }));
+    jest.spyOn(Logger.prototype, 'warn').mockImplementation();
+    const consumer = worker();
+
+    consumer.onApplicationBootstrap();
+    await new Promise((resolve) => setTimeout(resolve, 2200));
+    resolveLate(brokerConn);
+    await new Promise(setImmediate);
+
+    expect(brokerConn.close).toHaveBeenCalled();
+
+    await consumer.onModuleDestroy();
+  }, 10_000);
 });
