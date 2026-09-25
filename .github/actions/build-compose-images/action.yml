@@ -2,7 +2,12 @@ name: Build compose images
 description: >
   Builds the four service images with the tags infrastructure/docker/docker-compose.yml expects by default
   (<service>:local), cached per service via the GitHub Actions cache so platform-tests.yml's `docker compose up`
-  never rebuilds from scratch. Used by every platform-tests.yml job instead of `docker compose --build`.
+  never rebuilds from scratch. Used by every platform-tests.yml job instead of `docker compose --build`. Reads
+  _service.yml's cache scope too (#69: same Dockerfile, same `target: runtime`, same context) but writes only to
+  its own scope: platform-tests.yml runs three jobs in parallel, each invoking this action, so writing `mode=max`
+  to the scope _service.yml's single `image` job owns would race concurrent cache-to exports against each other
+  (github.com/moby/buildkit#2299 - GHA export overwritten by the last job to finish in a matrix), silently
+  dropping cache instead of sharing it.
 runs:
   using: composite
   steps:
@@ -15,6 +20,7 @@ runs:
             --target runtime \
             --build-arg GIT_SHA="$GITHUB_SHA" \
             --tag "${service}:local" \
+            --cache-from "type=gha,scope=${service}" \
             --cache-from "type=gha,scope=compose-${service}" \
             --cache-to "type=gha,mode=max,scope=compose-${service}" \
             --load \
