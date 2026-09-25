@@ -1,7 +1,7 @@
 // Dependency advisory gate: reads `npm audit --json` output and exits 1 on a HIGH/CRITICAL advisory that has a fix
 // and no valid exception. Same bar as CodeQL (security-severity >= 7.0) and Trivy `HIGH,CRITICAL --ignore-unfixed`.
 // Usage: node security/dependency-scan/gate.mjs <audit.json>
-//   SERVICE          service name shown in the summary (optional)
+//   SERVICE          service name: shown in the summary and matched against exceptions' `services` (optional)
 //   DEP_EXCEPTIONS   exceptions file (default: exceptions.json next to this script)
 // Fails closed: an npm audit error, unreadable output or a malformed exception is an error, never a pass.
 // The Markdown report goes to $GITHUB_STEP_SUMMARY when set, otherwise it is not written.
@@ -44,21 +44,23 @@ export function checkExceptions(list, now = new Date()) {
     const name = `exception ${e?.id ?? '?'} (${e?.package ?? '?'})`;
     const added = Date.parse(e?.added);
     const expires = Date.parse(e?.expires);
+    const badServices = e?.services !== undefined && (!Array.isArray(e.services) || !e.services.length || !e.services.every((s) => typeof s === 'string' && s));
     if (!e?.id || !e?.package || !e?.reason?.trim()) problems.push(`${name}: id, package and reason are required`);
     else if (!Number.isFinite(added) || !Number.isFinite(expires)) problems.push(`${name}: added and expires must be dates (YYYY-MM-DD)`);
     else if (expires - added > MAX_EXCEPTION_DAYS * DAY) problems.push(`${name}: lasts more than ${MAX_EXCEPTION_DAYS} days`);
     else if (expires < today) problems.push(`${name}: expired on ${e.expires}, fix the dependency or renew it with a new reason`);
+    else if (badServices) problems.push(`${name}: services must be a non-empty array of service names`);
     else valid.push(e);
   }
   return { valid, problems };
 }
 
-export function evaluate(audit, exceptions, now = new Date()) {
+export function evaluate(audit, exceptions, service, now = new Date()) {
   const { valid, problems } = checkExceptions(exceptions, now);
   const rows = advisories(audit)
     .filter((a) => BLOCKING.has(a.severity))
     .map((a) => {
-      const exc = valid.find((e) => e.id === a.id && e.package === a.pkg);
+      const exc = valid.find((e) => e.id === a.id && e.package === a.pkg && (!e.services || e.services.includes(service)));
       const status = exc ? 'excepted' : a.fixable ? 'blocking' : 'no fix';
       return { ...a, status, note: exc ? `until ${exc.expires}: ${exc.reason}` : '' };
     });
@@ -85,7 +87,7 @@ function main(files) {
   }
   const excFile = process.env.DEP_EXCEPTIONS ?? join(dirname(fileURLToPath(import.meta.url)), 'exceptions.json');
   const audit = JSON.parse(readFileSync(files[0], 'utf8'));
-  const result = evaluate(audit, JSON.parse(readFileSync(excFile, 'utf8')));
+  const result = evaluate(audit, JSON.parse(readFileSync(excFile, 'utf8')), process.env.SERVICE);
   const report = summary(result, process.env.SERVICE, audit.metadata?.vulnerabilities?.total ?? 0);
   if (process.env.GITHUB_STEP_SUMMARY) appendFileSync(process.env.GITHUB_STEP_SUMMARY, report);
   for (const p of result.problems) console.error(p);

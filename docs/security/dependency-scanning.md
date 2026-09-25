@@ -1,6 +1,6 @@
 # Dependency scanning
 
-Requirements, design and test plan: [issue #3](https://github.com/veyselkaraca/platform-engineering-lab/issues/3) (gate) and [#31](https://github.com/veyselkaraca/platform-engineering-lab/issues/31) (Dependabot). Follow-ups: [#32](https://github.com/veyselkaraca/platform-engineering-lab/issues/32) (SBOM, Trivy filesystem scan), [#33](https://github.com/veyselkaraca/platform-engineering-lab/issues/33) (per-service exceptions).
+Requirements, design and test plan: [issue #3](https://github.com/veyselkaraca/platform-engineering-lab/issues/3) (gate), [#31](https://github.com/veyselkaraca/platform-engineering-lab/issues/31) (Dependabot) and [#33](https://github.com/veyselkaraca/platform-engineering-lab/issues/33) (per-service exceptions). Follow-up: [#32](https://github.com/veyselkaraca/platform-engineering-lab/issues/32) (SBOM, Trivy filesystem scan).
 
 ## What runs
 
@@ -27,7 +27,7 @@ The three scanners in the pipeline fail at the same level (see [static-analysis.
 
 ## Exceptions
 
-`security/dependency-scan/exceptions.json` is a JSON array, empty by default. One entry per advisory and package, for all services:
+`security/dependency-scan/exceptions.json` is a JSON array, empty by default. One entry per advisory and package, for all services unless scoped:
 
 ```json
 {
@@ -35,11 +35,14 @@ The three scanners in the pipeline fail at the same level (see [static-analysis.
   "package": "example-package",
   "reason": "Vulnerable function is not called; upgrade blocked by <reason>",
   "added": "2026-09-21",
-  "expires": "2026-10-21"
+  "expires": "2026-10-21",
+  "services": ["user-service"]
 }
 ```
 
-The gate fails when an entry has no `id`, `package` or `reason`, has dates that are not `YYYY-MM-DD`, lasts more than 90 days (`expires` minus `added`) or is past its `expires` date (valid through that day). It checks every entry, also one that matches nothing, so a stale exception cannot sit in the file unnoticed. Changes under `security/dependency-scan/` trigger the service pipelines.
+`services` is optional. Omit it and the exception applies to every service's gate run, as before. Add it to limit the exception to the named services (matched against the `SERVICE` env var the pipeline sets to `inputs.service`) — for a vulnerable code path that only one service actually reaches.
+
+The gate fails when an entry has no `id`, `package` or `reason`, has dates that are not `YYYY-MM-DD`, lasts more than 90 days (`expires` minus `added`), is past its `expires` date (valid through that day), or has a `services` field that is not a non-empty array of strings. It checks every entry, also one that matches nothing, so a stale exception cannot sit in the file unnoticed. Changes under `security/dependency-scan/` trigger the service pipelines.
 
 An exception covers this gate only. The Trivy image scan (`image` job) is separate: a production dependency that is excepted here is still reported there when it is fixable and HIGH/CRITICAL, and fails the job. For a production dependency, add an entry for the same advisory with the same expiry (Trivy's `exp:` syntax) to `security/image-scan/.trivyignore` in the same change (format: [image-scanning.md](image-scanning.md#exceptions)), and remove both together. Dev-only dependencies are not in the image and need no second entry. (Seen in the throwaway run of #3: the dependency gate passed with the exception, `image` failed in Trivy on the same package.)
 

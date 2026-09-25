@@ -6,7 +6,7 @@ The `verify` job of every service pipeline (`.github/workflows/_service.yml`) ru
 |---|---|
 | `gate.mjs` | Reads the `npm audit --json` report, writes the run summary, exits 1 on a blocking advisory or a bad exception (no dependencies, fails closed) |
 | `gate.test.mjs` | Test of the gate; the pipeline runs it before the gate |
-| `exceptions.json` | Accepted advisories: `id`, `package`, `reason`, `added`, `expires` (at most 90 days) |
+| `exceptions.json` | Accepted advisories: `id`, `package`, `reason`, `added`, `expires` (at most 90 days), optional `services` (limits it to those services; omitted = all) |
 
 ```bash
 node --test security/dependency-scan/gate.test.mjs

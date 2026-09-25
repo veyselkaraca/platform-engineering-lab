@@ -14,11 +14,11 @@ const adv = (id, severity) => ({ source: 1, name: 'x', title: `t ${id}`, url: `h
 const audit = (vulnerabilities) => ({ auditReportVersion: 2, vulnerabilities, metadata: { vulnerabilities: { total: 1 } } });
 const pkg = (via, fixAvailable = true) => ({ via, fixAvailable });
 const exception = (over = {}) => ({ id: 'GHSA-aaaa', package: 'lodash', reason: 'not reachable', added: '2026-09-01', expires: '2026-10-01', ...over });
-const statuses = (a, exceptions = []) => evaluate(a, exceptions, NOW).rows.map((r) => `${r.id}:${r.status}`);
+const statuses = (a, exceptions = [], service) => evaluate(a, exceptions, service, NOW).rows.map((r) => `${r.id}:${r.status}`);
 
 test('a fixable high or critical advisory blocks', () => {
   const a = audit({ lodash: pkg([adv('GHSA-aaaa', 'high')]), minimist: pkg([adv('GHSA-bbbb', 'critical')]) });
-  const r = evaluate(a, [], NOW);
+  const r = evaluate(a, [], undefined, NOW);
   assert.equal(r.ok, false);
   assert.deepEqual(statuses(a), ['GHSA-aaaa:blocking', 'GHSA-bbbb:blocking']);
 });
@@ -26,13 +26,13 @@ test('a fixable high or critical advisory blocks', () => {
 test('an advisory with no fix is listed but does not block', () => {
   const a = audit({ lodash: pkg([adv('GHSA-aaaa', 'critical')], false) });
   assert.deepEqual(statuses(a), ['GHSA-aaaa:no fix']);
-  assert.equal(evaluate(a, [], NOW).ok, true);
+  assert.equal(evaluate(a, [], undefined, NOW).ok, true);
 });
 
 test('moderate and low advisories pass and are not listed, even next to a high one in the same package', () => {
   const a = audit({ lodash: pkg([adv('GHSA-aaaa', 'moderate'), adv('GHSA-bbbb', 'low'), adv('GHSA-cccc', 'high')]) });
   assert.deepEqual(statuses(a), ['GHSA-cccc:blocking']);
-  assert.equal(evaluate(audit({ lodash: pkg([adv('GHSA-aaaa', 'moderate')]) }), [], NOW).ok, true);
+  assert.equal(evaluate(audit({ lodash: pkg([adv('GHSA-aaaa', 'moderate')]) }), [], undefined, NOW).ok, true);
 });
 
 test('a transitive package is read from the package that owns the advisory, once', () => {
@@ -43,7 +43,7 @@ test('a transitive package is read from the package that owns the advisory, once
 
 test('a valid exception passes and is reported as excepted', () => {
   const a = audit({ lodash: pkg([adv('GHSA-aaaa', 'high')]) });
-  const r = evaluate(a, [exception()], NOW);
+  const r = evaluate(a, [exception()], undefined, NOW);
   assert.deepEqual(statuses(a, [exception()]), ['GHSA-aaaa:excepted']);
   assert.equal(r.ok, true);
   assert.match(r.rows[0].note, /2026-10-01.*not reachable/);
@@ -55,10 +55,34 @@ test('an exception for another advisory or package does not apply', () => {
   assert.deepEqual(statuses(a, [exception({ package: 'other' })]), ['GHSA-aaaa:blocking']);
 });
 
+test('an exception without services applies to every service', () => {
+  const a = audit({ lodash: pkg([adv('GHSA-aaaa', 'high')]) });
+  assert.deepEqual(statuses(a, [exception()], 'user-service'), ['GHSA-aaaa:excepted']);
+  assert.deepEqual(statuses(a, [exception()], 'order-service'), ['GHSA-aaaa:excepted']);
+  assert.deepEqual(statuses(a, [exception()], undefined), ['GHSA-aaaa:excepted']);
+});
+
+test('an exception scoped to services only applies to a matching service', () => {
+  const a = audit({ lodash: pkg([adv('GHSA-aaaa', 'high')]) });
+  const scoped = [exception({ services: ['user-service', 'order-service'] })];
+  assert.deepEqual(statuses(a, scoped, 'user-service'), ['GHSA-aaaa:excepted']);
+  assert.deepEqual(statuses(a, scoped, 'notification-worker'), ['GHSA-aaaa:blocking']);
+  assert.deepEqual(statuses(a, scoped, undefined), ['GHSA-aaaa:blocking']);
+});
+
+test('a services field that is not a non-empty array of strings fails the gate', () => {
+  const clean = audit({});
+  for (const services of ['user-service', [], [1], [''], ['user-service', 2]]) {
+    const r = evaluate(clean, [exception({ services })], undefined, NOW);
+    assert.equal(r.ok, false, JSON.stringify(services));
+    assert.match(r.problems[0], /services must be a non-empty array of service names/);
+  }
+});
+
 test('an exception is valid through its expiry day and fails the gate after it', () => {
   const a = audit({ lodash: pkg([adv('GHSA-aaaa', 'high')]) });
-  assert.equal(evaluate(a, [exception({ expires: '2026-09-21' })], NOW).ok, true);
-  const r = evaluate(a, [exception({ expires: '2026-09-20' })], NOW);
+  assert.equal(evaluate(a, [exception({ expires: '2026-09-21' })], undefined, NOW).ok, true);
+  const r = evaluate(a, [exception({ expires: '2026-09-20' })], undefined, NOW);
   assert.equal(r.ok, false);
   assert.match(r.problems[0], /expired on 2026-09-20/);
 });
@@ -66,26 +90,26 @@ test('an exception is valid through its expiry day and fails the gate after it',
 test('an exception with no reason, bad dates or more than 90 days fails, even with nothing to except', () => {
   const clean = audit({});
   for (const bad of [{ reason: ' ' }, { expires: 'soon' }, { added: undefined }, { expires: '2026-12-15' }, { id: undefined }]) {
-    assert.equal(evaluate(clean, [exception(bad)], NOW).ok, false, JSON.stringify(bad));
+    assert.equal(evaluate(clean, [exception(bad)], undefined, NOW).ok, false, JSON.stringify(bad));
   }
-  assert.equal(evaluate(clean, [exception({ expires: '2026-11-30' })], NOW).ok, true); // 90 days from 2026-09-01
-  assert.equal(evaluate(clean, {}, NOW).ok, false);
+  assert.equal(evaluate(clean, [exception({ expires: '2026-11-30' })], undefined, NOW).ok, true); // 90 days from 2026-09-01
+  assert.equal(evaluate(clean, {}, undefined, NOW).ok, false);
 });
 
 test('an npm audit error or something that is not a report is an error, never a pass', () => {
-  assert.throws(() => evaluate({ message: 'request failed', error: { summary: '', detail: '' } }, [], NOW), /npm audit failed: request failed/);
-  assert.throws(() => evaluate({}, [], NOW), /not an npm audit report/);
-  assert.throws(() => evaluate(null, [], NOW), /not an npm audit report/);
+  assert.throws(() => evaluate({ message: 'request failed', error: { summary: '', detail: '' } }, [], undefined, NOW), /npm audit failed: request failed/);
+  assert.throws(() => evaluate({}, [], undefined, NOW), /not an npm audit report/);
+  assert.throws(() => evaluate(null, [], undefined, NOW), /not an npm audit report/);
 });
 
 test('summary reports the status of every high/critical advisory', () => {
   const a = audit({ lodash: pkg([adv('GHSA-aaaa', 'high')]), minimist: pkg([adv('GHSA-bbbb', 'critical')], false) });
-  const md = summary(evaluate(a, [exception()], NOW), 'user-service', 2);
+  const md = summary(evaluate(a, [exception()], undefined, NOW), 'user-service', 2);
   assert.match(md, /### Dependency scan: user-service/);
   assert.match(md, /Passed\. 2 advisories in total, 2 high\/critical/);
   assert.match(md, /\| lodash \| GHSA-aaaa \| high \| excepted \|/);
   assert.match(md, /\| minimist \| GHSA-bbbb \| critical \| no fix \|/);
-  const failed = summary(evaluate(a, [], NOW), '', 2);
+  const failed = summary(evaluate(a, [], undefined, NOW), '', 2);
   assert.match(failed, /FAILED/);
   assert.match(failed, /\| lodash \| GHSA-aaaa \| high \| blocking \|/);
 });
