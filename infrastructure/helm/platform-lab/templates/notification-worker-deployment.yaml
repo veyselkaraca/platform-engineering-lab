@@ -1,0 +1,68 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: notification-worker
+  labels:
+    {{- include "platform-lab.labels" (dict "root" $ "name" "notification-worker") | nindent 4 }}
+spec:
+  replicas: {{ .Values.notificationWorker.replicaCount }}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  selector:
+    matchLabels:
+      {{- include "platform-lab.selectorLabels" (dict "name" "notification-worker") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "platform-lab.selectorLabels" (dict "name" "notification-worker") | nindent 8 }}
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        # The image's USER is the non-numeric "node" account; kubelet cannot verify runAsNonRoot from a
+        # name alone, so the uid/gid it maps to (node:22-alpine's built-in "node" user) must be explicit.
+        runAsUser: 1000
+        runAsGroup: 1000
+      terminationGracePeriodSeconds: {{ .Values.notificationWorker.terminationGracePeriodSeconds }}
+      containers:
+        - name: notification-worker
+          image: "{{ .Values.notificationWorker.image.repository }}:{{ .Values.notificationWorker.image.tag }}"
+          imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.notificationWorker.containerPort }}
+          envFrom:
+            - configMapRef:
+                name: notification-worker
+          env:
+            - name: PORT
+              value: "{{ .Values.notificationWorker.containerPort }}"
+            {{- include "platform-lab.secretEnv" .Values.notificationWorker.secretEnv | nindent 12 }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: {{ .Values.notificationWorker.readOnlyRootFilesystem }}
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            {{- toYaml .Values.notificationWorker.resources | nindent 12 }}
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+          startupProbe:
+            httpGet: { path: /health/live, port: http }
+            failureThreshold: 30
+            periodSeconds: 2
+          livenessProbe:
+            httpGet: { path: /health/live, port: http }
+            periodSeconds: 10
+            timeoutSeconds: 3
+          readinessProbe:
+            httpGet: { path: /health/ready, port: http }
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+      volumes:
+        - name: tmp
+          emptyDir: {}

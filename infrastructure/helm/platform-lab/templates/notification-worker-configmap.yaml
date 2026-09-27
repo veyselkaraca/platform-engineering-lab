@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: notification-worker
+  labels:
+    {{- include "platform-lab.labels" (dict "root" $ "name" "notification-worker") | nindent 4 }}
+data:
+  {{- range $k, $v := .Values.notificationWorker.env }}
+  {{ $k }}: {{ $v | quote }}
+  {{- end }}

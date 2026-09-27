@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: notification-worker
+  labels:
+    {{- include "platform-lab.labels" (dict "root" $ "name" "notification-worker") | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "platform-lab.selectorLabels" (dict "name" "notification-worker") | nindent 4 }}
+  ports:
+    - name: http
+      port: {{ .Values.notificationWorker.containerPort }}
+      targetPort: http
