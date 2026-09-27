@@ -87,7 +87,8 @@ without blocking anything.
 kubectl apply -f infrastructure/kubernetes/namespaces/
 # then, after the one-time bootstrap above and before `helm install` (see secrets runbook for Secrets):
 kubectl apply -f infrastructure/kubernetes/ingress/
-# then, after `helm install`/`upgrade` (#9 — policies select on the workloads' own pod labels, so the
+# then, after `helm install`/`upgrade` of both infrastructure/helm/platform-lab and
+# infrastructure/helm/platform-data (#9 — policies select on the workloads' own pod labels, so the
 # Pods must already exist) and before real traffic reaches the namespace:
 kubectl apply -f infrastructure/kubernetes/policies/
 ```
@@ -110,6 +111,8 @@ at the network layer rather than refused by an application. Symptoms:
   matching allow rule, or before the target Pods existed yet for a label selector to match. Recovery:
   re-apply the whole `policies/` directory together (allow rules are additive, order within the
   directory doesn't matter once all files are applied), or delete `default-deny` temporarily.
-- The egress rules to Postgres/Redis/RabbitMQ/Keycloak/the OTEL collector (`40`-`60` in `policies/`)
-  encode an *assumed* `app.kubernetes.io/name` label for workloads #10/#11/#12 haven't shipped yet —
-  once one of those charts lands, confirm its actual pod labels match, or update the policy.
+- The egress rules to Postgres/RabbitMQ/Keycloak/the OTEL collector (`40`, `42`, `50`-`60` in
+  `policies/`) encode an *assumed* `app.kubernetes.io/name` label for workloads #10/#11/#12 haven't
+  shipped yet — once one of those charts lands, confirm its actual pod labels match, or update the
+  policy. Redis's rule (`41`) is confirmed: `infrastructure/helm/platform-data`'s plain Deployment
+  carries `app.kubernetes.io/name: redis` on port 6379 exactly as assumed.

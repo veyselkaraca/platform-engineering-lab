@@ -1,0 +1,56 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis
+  labels:
+    {{- include "platform-data.labels" (dict "root" $ "name" "redis") | nindent 4 }}
+spec:
+  replicas: {{ .Values.redis.replicaCount }}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  selector:
+    matchLabels:
+      {{- include "platform-data.selectorLabels" (dict "name" "redis") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "platform-data.selectorLabels" (dict "name" "redis") | nindent 8 }}
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        # redis:8.2-alpine's built-in "redis" account (uid/gid 999); kubelet cannot verify
+        # runAsNonRoot from a name alone.
+        runAsUser: 999
+        runAsGroup: 999
+      terminationGracePeriodSeconds: {{ .Values.redis.terminationGracePeriodSeconds }}
+      containers:
+        - name: redis
+          image: "{{ .Values.redis.image.repository }}:{{ .Values.redis.image.tag }}"
+          imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          # Cache-only (AGENTS.md §21, #12-5): no RDB/AOF persistence, so no volume/PVC to recover —
+          # a restart starts empty and order-service falls back to user-service (ADR-001) meanwhile.
+          args: ["--save", "", "--appendonly", "no"]
+          ports:
+            - name: redis
+              containerPort: {{ .Values.redis.containerPort }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            {{- toYaml .Values.redis.resources | nindent 12 }}
+          livenessProbe:
+            exec:
+              command: ["redis-cli", "ping"]
+            periodSeconds: 10
+            timeoutSeconds: 3
+          readinessProbe:
+            exec:
+              command: ["redis-cli", "ping"]
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3

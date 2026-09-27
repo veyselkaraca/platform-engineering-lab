@@ -1,0 +1,21 @@
+# Default (local/dev-like) values for platform-data (#12) — PostgreSQL, Redis and RabbitMQ for the
+# platform-lab namespace. Built incrementally, one dependency at a time; see README.md for the
+# per-dependency decision record (#12-1) and what is and isn't implemented yet.
+#
+# Redis is deployed cache-only (AGENTS.md §21): a plain Deployment+Service, not the Bitnami chart
+# (frozen since Aug 2025) and not an operator, with persistence explicitly disabled so a restart never
+# leaves a stale save file behind (#12-5).
+
+global:
+  imagePullPolicy: IfNotPresent
+
+redis:
+  containerPort: 6379
+  replicaCount: 1
+  image:
+    repository: redis
+    tag: 8.2-alpine
+  resources:
+    requests: { cpu: 50m, memory: 32Mi }
+    limits: { cpu: 200m, memory: 128Mi }
+  terminationGracePeriodSeconds: 30
