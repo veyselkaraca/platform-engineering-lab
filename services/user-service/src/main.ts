@@ -16,4 +16,4 @@ async function bootstrap() {
 }
 
 void bootstrap();
-// touch 3: verify the refined read-only-shared-scope fix for #69
+// touch 4: read back the cache scope-user-service wrote in the previous push
