@@ -1,0 +1,59 @@
+# Helm chart gate (#7): lint and template-render infrastructure/helm/platform-lab so a structural
+# regression (bad values reference, invalid template) fails CI before anyone runs `helm upgrade` by hand.
+# Semantic drift against each service's real env surface is not caught here (docs/architecture and the
+# chart's own README call this out) — only `helm lint`/`helm template` structural checks.
+name: helm
+
+on:
+  push:
+    branches: ['**']
+    paths:
+      - "infrastructure/helm/**"
+      - ".github/workflows/helm.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: helm-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  lint-and-template:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: azure/setup-helm@v4
+
+      - name: helm lint
+        run: helm lint infrastructure/helm/platform-lab
+
+      - name: helm template (default values)
+        run: |
+          helm template platform-lab infrastructure/helm/platform-lab \
+            --set apiGateway.image.tag=ci --set userService.image.tag=ci \
+            --set orderService.image.tag=ci --set notificationWorker.image.tag=ci \
+            > /tmp/platform-lab-default.yaml
+
+      - name: helm template (values-prod.yaml override)
+        run: |
+          helm template platform-lab infrastructure/helm/platform-lab \
+            -f infrastructure/helm/platform-lab/values-prod.yaml \
+            --set apiGateway.image.tag=ci --set userService.image.tag=ci \
+            --set orderService.image.tag=ci --set notificationWorker.image.tag=ci \
+            > /tmp/platform-lab-prod.yaml
+
+      # Every environment must render exactly one Deployment/Service/ConfigMap per service (7-1).
+      - name: Verify rendered resource counts
+        run: |
+          for f in /tmp/platform-lab-default.yaml /tmp/platform-lab-prod.yaml; do
+            for kind in Deployment Service ConfigMap; do
+              count=$(grep -c "^kind: $kind$" "$f")
+              if [ "$count" -ne 4 ]; then
+                echo "expected 4 $kind resources in $f, got $count" >&2
+                exit 1
+              fi
+            done
+          done

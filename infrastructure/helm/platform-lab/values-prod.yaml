@@ -1,0 +1,48 @@
+# Environment-specific overrides only (7-4): image tags still come from --set at deploy time
+# (CI knows the commit sha; this file does not), everything else that differs by environment lives here.
+apiGateway:
+  replicaCount: 2
+  env:
+    AUTH_ISSUER: https://auth.platform-lab.example.com/realms/platform-lab
+    AUTH_JWKS_URL: http://keycloak:8080/realms/platform-lab/protocol/openid-connect/certs
+    OTEL_RESOURCE_ATTRIBUTES: service.namespace=platform-lab,deployment.environment.name=prod
+    OTEL_TRACES_SAMPLER: parentbased_traceidratio
+
+userService:
+  replicaCount: 2
+  env:
+    AUTH_ISSUER: https://auth.platform-lab.example.com/realms/platform-lab
+    OTEL_RESOURCE_ATTRIBUTES: service.namespace=platform-lab,deployment.environment.name=prod
+    OTEL_TRACES_SAMPLER: parentbased_traceidratio
+  secretEnv:
+    DATABASE_URL:
+      secretName: user-service-db-prod
+      secretKey: DATABASE_URL
+
+orderService:
+  replicaCount: 2
+  env:
+    AUTH_ISSUER: https://auth.platform-lab.example.com/realms/platform-lab
+    OTEL_RESOURCE_ATTRIBUTES: service.namespace=platform-lab,deployment.environment.name=prod
+    OTEL_TRACES_SAMPLER: parentbased_traceidratio
+  secretEnv:
+    DATABASE_URL:
+      secretName: order-service-db-prod
+      secretKey: DATABASE_URL
+    RABBITMQ_URL:
+      secretName: platform-lab-rabbitmq-prod
+      secretKey: RABBITMQ_URL
+
+notificationWorker:
+  replicaCount: 2
+  env:
+    AUTH_ISSUER: https://auth.platform-lab.example.com/realms/platform-lab
+    OTEL_RESOURCE_ATTRIBUTES: service.namespace=platform-lab,deployment.environment.name=prod
+    OTEL_TRACES_SAMPLER: parentbased_traceidratio
+  secretEnv:
+    DATABASE_URL:
+      secretName: notification-worker-db-prod
+      secretKey: DATABASE_URL
+    RABBITMQ_URL:
+      secretName: platform-lab-rabbitmq-prod
+      secretKey: RABBITMQ_URL

@@ -1,0 +1,64 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api-gateway
+  labels:
+    {{- include "platform-lab.labels" (dict "root" $ "name" "api-gateway") | nindent 4 }}
+spec:
+  replicas: {{ .Values.apiGateway.replicaCount }}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  selector:
+    matchLabels:
+      {{- include "platform-lab.selectorLabels" (dict "name" "api-gateway") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "platform-lab.selectorLabels" (dict "name" "api-gateway") | nindent 8 }}
+    spec:
+      securityContext:
+        runAsNonRoot: true
+      terminationGracePeriodSeconds: {{ .Values.apiGateway.terminationGracePeriodSeconds }}
+      containers:
+        - name: api-gateway
+          image: "{{ .Values.apiGateway.image.repository }}:{{ .Values.apiGateway.image.tag }}"
+          imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.apiGateway.containerPort }}
+          envFrom:
+            - configMapRef:
+                name: api-gateway
+          env:
+            - name: PORT
+              value: "{{ .Values.apiGateway.containerPort }}"
+            {{- include "platform-lab.secretEnv" .Values.apiGateway.secretEnv | nindent 12 }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: {{ .Values.apiGateway.readOnlyRootFilesystem }}
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            {{- toYaml .Values.apiGateway.resources | nindent 12 }}
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+          startupProbe:
+            httpGet: { path: /health/live, port: http }
+            failureThreshold: 30
+            periodSeconds: 2
+          livenessProbe:
+            httpGet: { path: /health/live, port: http }
+            periodSeconds: 10
+            timeoutSeconds: 3
+          readinessProbe:
+            httpGet: { path: /health/ready, port: http }
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+      volumes:
+        - name: tmp
+          emptyDir: {}

@@ -1,0 +1,64 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: order-service
+  labels:
+    {{- include "platform-lab.labels" (dict "root" $ "name" "order-service") | nindent 4 }}
+spec:
+  replicas: {{ .Values.orderService.replicaCount }}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  selector:
+    matchLabels:
+      {{- include "platform-lab.selectorLabels" (dict "name" "order-service") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "platform-lab.selectorLabels" (dict "name" "order-service") | nindent 8 }}
+    spec:
+      securityContext:
+        runAsNonRoot: true
+      terminationGracePeriodSeconds: {{ .Values.orderService.terminationGracePeriodSeconds }}
+      containers:
+        - name: order-service
+          image: "{{ .Values.orderService.image.repository }}:{{ .Values.orderService.image.tag }}"
+          imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.orderService.containerPort }}
+          envFrom:
+            - configMapRef:
+                name: order-service
+          env:
+            - name: PORT
+              value: "{{ .Values.orderService.containerPort }}"
+            {{- include "platform-lab.secretEnv" .Values.orderService.secretEnv | nindent 12 }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: {{ .Values.orderService.readOnlyRootFilesystem }}
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            {{- toYaml .Values.orderService.resources | nindent 12 }}
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+          startupProbe:
+            httpGet: { path: /health/live, port: http }
+            failureThreshold: 30
+            periodSeconds: 2
+          livenessProbe:
+            httpGet: { path: /health/live, port: http }
+            periodSeconds: 10
+            timeoutSeconds: 3
+          readinessProbe:
+            httpGet: { path: /health/ready, port: http }
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+      volumes:
+        - name: tmp
+          emptyDir: {}
