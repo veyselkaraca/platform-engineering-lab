@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: platform-lab
+  labels:
+    app.kubernetes.io/part-of: platform-lab
+    app.kubernetes.io/managed-by: kubectl

@@ -1,0 +1,16 @@
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: api-gateway
+  namespace: platform-lab
+  labels:
+    app.kubernetes.io/part-of: platform-lab
+spec:
+  parentRefs:
+    - name: platform-lab
+  # Only api-gateway's Service is reachable from outside the cluster (infrastructure/helm/platform-lab/README.md);
+  # every other Service stays ClusterIP-only and unreachable through this route.
+  rules:
+    - backendRefs:
+        - name: api-gateway
+          port: 3000

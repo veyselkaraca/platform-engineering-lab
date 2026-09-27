@@ -2,6 +2,12 @@
 # regression (bad values reference, invalid template) fails CI before anyone runs `helm upgrade` by hand.
 # Semantic drift against each service's real env surface is not caught here (docs/architecture and the
 # chart's own README call this out) — only `helm lint`/`helm template` structural checks.
+#
+# Also gates the raw Kubernetes manifests (#8: Namespace, Gateway API traffic entry point) the same
+# way: client-side schema/structure only. `--dry-run=server` against a real cluster (Gateway API CRDs +
+# Envoy Gateway installed, per infrastructure/kubernetes/README.md) and the actual traffic-routing check
+# from the issue's test plan stay manual — a kind/k3d job here would be disproportionate CI overhead for
+# a lab (AGENTS.md §7.12).
 name: helm
 
 on:
@@ -9,6 +15,7 @@ on:
     branches: ['**']
     paths:
       - "infrastructure/helm/**"
+      - "infrastructure/kubernetes/**"
       - ".github/workflows/helm.yml"
   workflow_dispatch:
 
@@ -57,3 +64,26 @@ jobs:
               fi
             done
           done
+
+  kubernetes-manifests:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: azure/setup-kubectl@v4
+
+      # A built-in type: kubectl's own discovery resolves it with no cluster needed.
+      - name: kubectl apply --dry-run=client (namespace)
+        run: kubectl apply --dry-run=client -f infrastructure/kubernetes/namespaces/
+
+      # Gateway API kinds aren't built into kubectl — apply --dry-run=client still needs a cluster with
+      # the CRDs registered just to resolve the resource mapping, which this repo intentionally doesn't
+      # provision in CI (infrastructure/kubernetes/README.md). kubeconform validates the same manifests'
+      # schema without one, pulling the Gateway API CRD schemas from a public catalog.
+      - name: Validate Gateway API manifests (kubeconform, no cluster)
+        run: |
+          docker run --rm -v "$PWD/infrastructure/kubernetes/ingress:/manifests:ro" \
+            ghcr.io/yannh/kubeconform:v0.8.0 -strict -summary \
+            -schema-location default \
+            -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json' \
+            /manifests

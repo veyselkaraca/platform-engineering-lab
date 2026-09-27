@@ -1,0 +1,10 @@
+apiVersion: gateway.networking.k8s.io/v1
+kind: GatewayClass
+metadata:
+  name: platform-lab
+  labels:
+    app.kubernetes.io/part-of: platform-lab
+spec:
+  # Fixed string for the Envoy Gateway controller; see infrastructure/kubernetes/README.md for the
+  # one-time cluster bootstrap (Gateway API CRDs + the Envoy Gateway controller itself) this depends on.
+  controllerName: gateway.envoyproxy.io/gatewayclass-controller
