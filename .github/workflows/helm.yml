@@ -2,6 +2,13 @@
 # regression (bad values reference, invalid template) fails CI before anyone runs `helm upgrade` by hand.
 # Semantic drift against each service's real env surface is not caught here (docs/architecture and the
 # chart's own README call this out) — only `helm lint`/`helm template` structural checks.
+#
+# Also gates the raw Kubernetes manifests (#8: Namespace, Gateway API traffic entry point) the same
+# way: schema/structure only, via kubeconform (no cluster — kubectl's own dry-run needs one just to
+# resolve resource mappings, even for a built-in type). `--dry-run=server` against a real cluster
+# (Gateway API CRDs + Envoy Gateway installed, per infrastructure/kubernetes/README.md) and the actual
+# traffic-routing check from the issue's test plan stay manual — a kind/k3d job here would be
+# disproportionate CI overhead for a lab (AGENTS.md §7.12).
 name: helm
 
 on:
@@ -9,6 +16,7 @@ on:
     branches: ['**']
     paths:
       - "infrastructure/helm/**"
+      - "infrastructure/kubernetes/**"
       - ".github/workflows/helm.yml"
   workflow_dispatch:
 
@@ -57,3 +65,23 @@ jobs:
               fi
             done
           done
+
+  kubernetes-manifests:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+
+      # `kubectl apply --dry-run=client` still needs a reachable API server to resolve the resource
+      # mapping (even for a built-in type like Namespace, let alone Gateway API's CRD-backed kinds) —
+      # there is no cluster in CI, and provisioning one here would be disproportionate for a lab
+      # (AGENTS.md §7.12). kubeconform validates schema for everything under infrastructure/kubernetes/
+      # with no cluster at all: its bundled schemas cover core types, and the CRD catalog covers Gateway
+      # API. `--dry-run=server` against a real kind/k3d cluster with Envoy Gateway installed and the
+      # actual traffic-routing check stay manual, per the issue's test plan.
+      - name: Validate manifests (kubeconform, no cluster)
+        run: |
+          docker run --rm -v "$PWD/infrastructure/kubernetes:/manifests:ro" \
+            ghcr.io/yannh/kubeconform:v0.8.0 -strict -summary \
+            -schema-location default \
+            -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json' \
+            /manifests
