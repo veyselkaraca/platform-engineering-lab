@@ -5,10 +5,13 @@
 # until the matching Ingress rule below was added (same two-sided gap
 # 21-allow-api-gateway-egress-to-backends.yaml fixes on the gateway path).
 #
-# ASSUMPTION (unverified until #12 lands): selects app.kubernetes.io/name: postgres and port 5432,
-# following the chart's existing label convention (infrastructure/helm/platform-lab/templates/_helpers.tpl).
-# #12 ("Run PostgreSQL, Redis and RabbitMQ in the cluster") is still open — whoever implements it must
-# either match this label/port or this policy needs updating to match theirs.
+# Resolved by #12 (infrastructure/helm/platform-data): the app.kubernetes.io/name: postgres assumption
+# this policy carried before #12 landed does NOT match reality. PostgreSQL is CloudNativePG's Cluster
+# CRD (name "postgres"), not a plain Deployment — the operator labels every Pod/PVC it manages with
+# cnpg.io/cluster: <cluster name>, never app.kubernetes.io/name, and does not propagate labels from the
+# Cluster's own metadata unless the operator is separately configured to (out of scope here, see
+# infrastructure/helm/platform-data/README.md). Verified against a real kind cluster with the CNPG
+# operator installed: port 5432 was already correct.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -28,7 +31,7 @@ spec:
     - to:
         - podSelector:
             matchLabels:
-              app.kubernetes.io/name: postgres
+              cnpg.io/cluster: postgres
       ports:
         - protocol: TCP
           port: 5432
@@ -43,7 +46,7 @@ metadata:
 spec:
   podSelector:
     matchLabels:
-      app.kubernetes.io/name: postgres
+      cnpg.io/cluster: postgres
   policyTypes:
     - Ingress
   ingress:

@@ -1,0 +1,87 @@
+{{/*
+#12-3: Kubernetes Job equivalent of docker-compose's db-init, idempotent on every apply.
+post-install,post-upgrade (not pre-install): a pre-install hook runs and must complete before Helm
+creates any other resource in the release, so a Job that waits for the Cluster in this same chart would
+deadlock on the very first `helm install` — the Cluster it is waiting for would not exist yet.
+*/}}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: db-init
+  labels:
+    {{- include "platform-data.labels" (dict "root" $ "name" "postgres") | nindent 4 }}
+  annotations:
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-weight": "0"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  backoffLimit: 6
+  template:
+    metadata:
+      labels:
+        {{- include "platform-data.selectorLabels" (dict "name" "postgres-db-init") | nindent 8 }}
+    spec:
+      restartPolicy: Never
+      securityContext:
+        runAsNonRoot: true
+        # postgres:17-alpine's built-in "postgres" account (uid/gid 70).
+        runAsUser: 70
+        runAsGroup: 70
+      # The Cluster CR may only just have been created (Helm does not wait on a CRD's own readiness);
+      # this loop is the same "wait for healthy" role docker-compose's `depends_on: condition:
+      # service_healthy` plays, since Kubernetes has no equivalent for a Job depending on a CR.
+      initContainers:
+        - name: wait-for-postgres
+          image: "{{ .Values.postgres.clientImage }}"
+          command:
+            - sh
+            - -c
+            - |
+              set -eu
+              until pg_isready -h {{ .Values.postgres.clusterName }}-rw -U "$PGUSER" -d postgres; do
+                sleep 2
+              done
+          env:
+            - name: PGUSER
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.postgres.clusterName }}-superuser
+                  key: username
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+      containers:
+        - name: db-init
+          image: "{{ .Values.postgres.clientImage }}"
+          command: ["sh", "/scripts/init-databases.sh"]
+          env:
+            - name: PGHOST
+              value: "{{ .Values.postgres.clusterName }}-rw"
+            - name: PGUSER
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.postgres.clusterName }}-superuser
+                  key: username
+            - name: PGPASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.postgres.clusterName }}-superuser
+                  key: password
+            - name: POSTGRES_MULTIPLE_DATABASES
+              value: {{ .Values.postgres.databases | quote }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: script
+              mountPath: /scripts
+              readOnly: true
+      volumes:
+        - name: script
+          configMap:
+            name: db-init-script
+            defaultMode: 0o755

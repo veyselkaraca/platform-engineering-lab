@@ -5,6 +5,13 @@
 # Redis is deployed cache-only (AGENTS.md §21): a plain Deployment+Service, not the Bitnami chart
 # (frozen since Aug 2025) and not an operator, with persistence explicitly disabled so a restart never
 # leaves a stale save file behind (#12-5).
+#
+# PostgreSQL is the CloudNativePG operator's Cluster CRD (#12-1) — the operator itself is cluster
+# infrastructure installed once per cluster (infrastructure/kubernetes/README.md), not vendored here.
+# enableSuperuserAccess is on because db-init (below) and every service's manually-provisioned
+# DATABASE_URL Secret (docs/operations/runbooks/kubernetes-secrets.md) share one admin identity across
+# the four databases, exactly like docker-compose's single POSTGRES_USER today — this phase translates
+# that layout to the cluster, it does not redesign per-service DB ownership.
 
 global:
   imagePullPolicy: IfNotPresent
@@ -19,3 +26,22 @@ redis:
     requests: { cpu: 50m, memory: 32Mi }
     limits: { cpu: 200m, memory: 128Mi }
   terminationGracePeriodSeconds: 30
+
+postgres:
+  clusterName: postgres
+  instances: 1
+  # CloudNativePG's own image (bundles the replication/backup tooling the operator drives); floating
+  # minor like compose's own postgres:17-alpine, never "latest" (AGENTS.md §7.3).
+  imageName: ghcr.io/cloudnative-pg/postgresql:17
+  enableSuperuserAccess: true
+  storage:
+    size: 1Gi
+  resources:
+    requests: { cpu: 100m, memory: 256Mi }
+    limits: { cpu: 500m, memory: 512Mi }
+  # Same four databases db-init creates in docker-compose (ADR-001: one database per service);
+  # reused as-is, not rewritten (issue #12's own design note).
+  databases: user_service,order_service,notification_worker,keycloak
+  # client image for the db-init Job (pg_isready/psql only, never runs the server) — matches the
+  # server's own major version.
+  clientImage: postgres:17-alpine

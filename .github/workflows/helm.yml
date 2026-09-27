@@ -80,10 +80,11 @@ jobs:
       - name: helm template
         run: helm template platform-data infrastructure/helm/platform-data > /tmp/platform-data.yaml
 
-      # Redis is the only workload implemented so far; grows as PostgreSQL/RabbitMQ land.
+      # Redis (Deployment+Service) and PostgreSQL (CloudNativePG Cluster + db-init Job+ConfigMap)
+      # implemented so far; grows again once RabbitMQ lands.
       - name: Verify rendered resource counts
         run: |
-          for kind in Deployment Service; do
+          for kind in Deployment Service Cluster Job ConfigMap; do
             count=$(grep -c "^kind: $kind$" /tmp/platform-data.yaml)
             if [ "$count" -ne 1 ]; then
               echo "expected 1 $kind resource, got $count" >&2

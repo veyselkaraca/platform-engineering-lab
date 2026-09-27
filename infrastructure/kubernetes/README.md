@@ -43,6 +43,15 @@ kubectl wait --timeout=120s -n envoy-gateway-system deployment/envoy-gateway --f
 This also installs the Gateway API CRDs (`crds.enabled=true` is the chart default) — `kubectl apply
 --dry-run=server` and any real `apply` of `infrastructure/kubernetes/ingress/` need this done first.
 
+Same for the CloudNativePG operator (#12 — `infrastructure/helm/platform-data`'s `Cluster` CRD needs it
+running before that chart is installed):
+
+```bash
+kubectl apply --server-side -f \
+  https://raw.githubusercontent.com/cloudnative-pg/cloudnative-pg/release-1.27/releases/cnpg-1.27.4.yaml
+kubectl rollout status deployment -n cnpg-system cnpg-controller-manager --timeout=120s
+```
+
 `policies/` (#9) needs a CNI that actually enforces `NetworkPolicy` — kindnet, kind's default CNI, silently
 accepts the objects but never blocks traffic, so its test plan's "a blocked path is actually blocked"
 check would pass for the wrong reason. Recreate the local cluster with the default CNI disabled and
@@ -111,8 +120,11 @@ at the network layer rather than refused by an application. Symptoms:
   matching allow rule, or before the target Pods existed yet for a label selector to match. Recovery:
   re-apply the whole `policies/` directory together (allow rules are additive, order within the
   directory doesn't matter once all files are applied), or delete `default-deny` temporarily.
-- The egress rules to Postgres/RabbitMQ/Keycloak/the OTEL collector (`40`, `42`, `50`-`60` in
-  `policies/`) encode an *assumed* `app.kubernetes.io/name` label for workloads #10/#11/#12 haven't
-  shipped yet — once one of those charts lands, confirm its actual pod labels match, or update the
-  policy. Redis's rule (`41`) is confirmed: `infrastructure/helm/platform-data`'s plain Deployment
-  carries `app.kubernetes.io/name: redis` on port 6379 exactly as assumed.
+- The egress rules to RabbitMQ/Keycloak/the OTEL collector (`42`, `50`-`60` in `policies/`) encode an
+  *assumed* `app.kubernetes.io/name` label for workloads #11/#12 haven't shipped yet — once one of
+  those charts lands, confirm its actual pod labels match, or update the policy. Redis's rule (`41`) is
+  confirmed: `infrastructure/helm/platform-data`'s plain Deployment carries `app.kubernetes.io/name:
+  redis` on port 6379 exactly as assumed. Postgres's rule (`40`) needed an actual fix, not just
+  confirmation: CloudNativePG's Cluster CRD never carries `app.kubernetes.io/name` — its Pods are
+  labelled `cnpg.io/cluster: postgres` instead, and `40-allow-egress-to-postgres.yaml` now selects on
+  that.
