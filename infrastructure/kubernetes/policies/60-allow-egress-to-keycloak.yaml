@@ -1,0 +1,49 @@
+# Not itemized in issue #9's 9-4/9-5, but required by the same "default-deny blocks it too" logic: all
+# four services fetch Keycloak's public keys for JWT verification (AUTH_JWKS_URL, docker-compose.yml's
+# &auth-env applies to api-gateway, user-service, order-service and notification-worker alike; a service
+# that cannot reach it fails closed with 503 per CLAUDE.md). Treated like DNS/OTEL (9-5) rather than a
+# per-caller allow (9-3/9-4) because every service needs it, not just one caller.
+#
+# ASSUMPTION (unverified until #11 lands): app.kubernetes.io/name: keycloak, port 8080 — matching
+# infrastructure/helm/platform-lab/values.yaml's existing AUTH_JWKS_URL: http://keycloak:8080/...
+# (already written ahead of #11, same as this policy). #11 ("Deploy Keycloak to Kubernetes") is still
+# open; update this policy to match its actual labels/port.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-egress-to-keycloak
+  namespace: platform-lab
+  labels:
+    app.kubernetes.io/part-of: platform-lab
+spec:
+  podSelector: {}
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: keycloak
+      ports:
+        - protocol: TCP
+          port: 8080
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-keycloak-ingress
+  namespace: platform-lab
+  labels:
+    app.kubernetes.io/part-of: platform-lab
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: keycloak
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector: {}
+      ports:
+        - protocol: TCP
+          port: 8080

@@ -1,0 +1,25 @@
+# 9-2: only the Ingress controller (Envoy Gateway's proxy pods, deployed in envoy-gateway-system per
+# infrastructure/kubernetes/README.md's bootstrap step) may reach api-gateway. Namespace-only selector
+# (no podSelector on the "from" side) because the proxy pod's own labels are Envoy Gateway's to define,
+# not ours to pin.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-ingress-to-api-gateway
+  namespace: platform-lab
+  labels:
+    app.kubernetes.io/part-of: platform-lab
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: api-gateway
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: envoy-gateway-system
+      ports:
+        - protocol: TCP
+          port: 3000

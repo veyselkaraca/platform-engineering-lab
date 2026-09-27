@@ -1,0 +1,46 @@
+# 9-5: default-deny also blocks telemetry export; every service sends OTLP to the collector
+# (OTEL_EXPORTER_OTLP_ENDPOINT, always on per docs/features/observability). podSelector: {} rather than
+# an explicit service list, matching 9-5's own "stays reachable from every service" wording.
+#
+# ASSUMPTION (unverified until #10 lands): app.kubernetes.io/name: otel-collector, port 4318 (OTLP/HTTP,
+# matching infrastructure/docker/docker-compose.yml's otel-collector:4318). #10 ("Package the
+# observability stack for Kubernetes") is still open; update this policy to match its actual labels/port.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-egress-to-otel-collector
+  namespace: platform-lab
+  labels:
+    app.kubernetes.io/part-of: platform-lab
+spec:
+  podSelector: {}
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: otel-collector
+      ports:
+        - protocol: TCP
+          port: 4318
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-otel-collector-ingress
+  namespace: platform-lab
+  labels:
+    app.kubernetes.io/part-of: platform-lab
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: otel-collector
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector: {}
+      ports:
+        - protocol: TCP
+          port: 4318

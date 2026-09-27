@@ -1,0 +1,28 @@
+# Companion to 30-allow-gateway-to-backends.yaml: an Ingress-only allow on each backend is not enough —
+# 00-default-deny.yaml's podSelector: {} also blocks Egress from api-gateway itself, so api-gateway needs
+# its own explicit Egress allow to reach any of them (confirmed with a kind+Calico smoke test: without
+# this, api-gateway's own egress hung with a timeout even though each backend already allowed the
+# matching ingress — the same symmetry 31-allow-order-to-user.yaml already has on both sides).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-api-gateway-egress-to-backends
+  namespace: platform-lab
+  labels:
+    app.kubernetes.io/part-of: platform-lab
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: api-gateway
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - podSelector:
+                matchExpressions:
+                  - key: app.kubernetes.io/name
+                    operator: In
+                    values: [user-service, order-service, notification-worker]
+      ports:
+        - protocol: TCP
+          port: 3000
