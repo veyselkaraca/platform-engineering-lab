@@ -16,4 +16,3 @@ async function bootstrap() {
 }
 
 void bootstrap();
-// touch 4: read back the cache scope-user-service wrote in the previous push
