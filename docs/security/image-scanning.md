@@ -4,9 +4,9 @@ Requirements: [issue #4](https://github.com/veyselkaraca/platform-engineering-la
 
 ## What runs
 
-The `image` job of `.github/workflows/_service.yml` builds `<service>:<commit-sha>` once and scans that exact image with Trivy (`aquasecurity/trivy-action`) before the smoke test and before publish:
+The `image` job of `.github/workflows/_service.yml` builds `<service>:<commit-sha>` once, checks the exception file, and scans that exact image with Trivy (`aquasecurity/trivy-action`) before the smoke test and before publish:
 
-`verify` + `codeql` + `secret-scan` -> image build -> **Trivy** -> smoke test -> publish
+`verify` + `codeql` + `secret-scan` -> image build -> **exception gate** -> **Trivy** -> smoke test -> publish
 
 The same image that passed is the one pushed; it is never rebuilt after the scan.
 
@@ -22,6 +22,7 @@ Not covered: MEDIUM/LOW findings and unfixed ones (not blocking, not reported by
 
 ## When the gate fails
 
+0. `Check image-scan exceptions` failing (not `Scan image`) means a `.trivyignore` entry itself is malformed — missing reason, missing `exp:`, or `exp:` more than 90 days out. Fix the entry per [Exceptions](#exceptions) below; it is not a new vulnerability.
 1. Read the `Scan image` step: it lists the package, installed and fixed version, the CVE id and the layer (OS package or `node_modules`).
 2. **OS package** (base image): rebuild against a newer `node:22-...` base tag; if the runtime stage adds no tools of its own, remove what is not needed instead (npm, npx and corepack are already removed from the runtime stage of every service, which cleared the findings that came from npm's own bundled packages, see [services/user-service/README.md](../../services/user-service/README.md)).
 3. **Library** (`node_modules`): bump the dependency in the service (`package-lock.json`); the dependency gate in `verify` normally reports the same advisory earlier, with the same fix.
@@ -46,8 +47,11 @@ docker run --rm -v //var/run/docker.sock:/var/run/docker.sock -v "$PWD/security/
 CVE-YYYY-NNNNN exp:YYYY-MM-DD
 ```
 
-- The comment line is the reason; an entry without one is not accepted in review.
-- `exp:` is at most 90 days after the day the entry is added (same limit as the dependency exceptions). After that date Trivy stops ignoring the id and the pipeline fails again, so a stale entry cannot stay forever. Remove the entry when the fix ships.
+`security/image-scan/gate.mjs` enforces the pairing before the Trivy step runs, so a malformed entry fails the pipeline instead of relying on review:
+
+- The comment line directly above the id is the reason; an entry without one fails the gate.
+- Every entry needs an `exp:YYYY-MM-DD` date.
+- `exp:` is at most 90 days out from the day the pipeline runs. After that date Trivy also stops ignoring the id, so a stale entry cannot stay forever either way. Remove the entry when the fix ships.
 - Secrets are not excepted; fix them.
 - A production dependency excepted in `security/dependency-scan/exceptions.json` needs an entry here for the same advisory with the same expiry (see [dependency-scanning.md](dependency-scanning.md)). Use the CVE id here and the GHSA id there. Dev-only dependencies are not in the image and need no entry here.
 
@@ -61,6 +65,8 @@ Trivy downloads its vulnerability database at the start of the step (the action 
 
 | File | Purpose |
 |---|---|
-| `.github/workflows/_service.yml` (`Scan image`) | The scan and the gate |
+| `.github/workflows/_service.yml` (`Check image-scan exceptions`, `Scan image`) | The exception gate and the scan |
 | `security/image-scan/.trivyignore` | Accepted findings with reason and expiry |
+| `security/image-scan/gate.mjs` | Enforces the reason and 90-day expiry rules on `.trivyignore` |
+| `security/image-scan/gate.test.mjs` | Test of the gate; the pipeline runs it before the gate |
 | `security/image-scan/README.md` | Folder overview and the local command |

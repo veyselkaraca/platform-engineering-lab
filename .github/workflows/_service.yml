@@ -104,6 +104,14 @@ jobs:
           cache-from: type=gha,scope=${{ inputs.service }}
           cache-to: type=gha,mode=max,scope=${{ inputs.service }}
 
+      # Image-scan exception gate (#34): fails on a .trivyignore entry with no reason comment, no exp: date,
+      # or an exp: more than 90 days out (Trivy enforces the expiry itself but not that upper bound).
+      - name: Test the image-scan gate
+        run: node --test security/image-scan/gate.test.mjs
+
+      - name: Check image-scan exceptions
+        run: node security/image-scan/gate.mjs
+
       # Image scan gate (#4): fails on fixable high/critical vulnerabilities and on high/critical secrets in the image.
       # Accepted findings live in security/image-scan/.trivyignore (reason + expiry per entry).
       - name: Scan image
