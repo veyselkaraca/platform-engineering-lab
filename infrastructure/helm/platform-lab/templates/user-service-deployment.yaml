@@ -21,6 +21,10 @@ spec:
     spec:
       securityContext:
         runAsNonRoot: true
+        # The image's USER is the non-numeric "node" account; kubelet cannot verify runAsNonRoot from a
+        # name alone, so the uid/gid it maps to (node:22-alpine's built-in "node" user) must be explicit.
+        runAsUser: 1000
+        runAsGroup: 1000
       terminationGracePeriodSeconds: {{ .Values.userService.terminationGracePeriodSeconds }}
       containers:
         - name: user-service
