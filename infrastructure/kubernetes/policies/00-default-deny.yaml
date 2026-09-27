@@ -1,0 +1,15 @@
+# 9-1: default-deny for the whole namespace. An empty podSelector matches every pod (present and
+# future); declaring both policyTypes with no ingress/egress rules blocks all traffic unless another
+# NetworkPolicy in this directory explicitly allows it.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny
+  namespace: platform-lab
+  labels:
+    app.kubernetes.io/part-of: platform-lab
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress

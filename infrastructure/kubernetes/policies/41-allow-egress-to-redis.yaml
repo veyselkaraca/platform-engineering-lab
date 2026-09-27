@@ -1,0 +1,48 @@
+# 9-4: only order-service uses Redis (REDIS_URL in infrastructure/helm/platform-lab/values.yaml, the
+# user cache) — user-service and notification-worker have no reason to reach it.
+#
+# ASSUMPTION (unverified until #12 lands): app.kubernetes.io/name: redis, port 6379. See the same note
+# in 40-allow-egress-to-postgres.yaml.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-egress-to-redis
+  namespace: platform-lab
+  labels:
+    app.kubernetes.io/part-of: platform-lab
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: order-service
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: redis
+      ports:
+        - protocol: TCP
+          port: 6379
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-redis-ingress-from-order-service
+  namespace: platform-lab
+  labels:
+    app.kubernetes.io/part-of: platform-lab
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: redis
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: order-service
+      ports:
+        - protocol: TCP
+          port: 6379

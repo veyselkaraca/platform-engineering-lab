@@ -1,0 +1,25 @@
+# 9-5: default-deny also blocks DNS, so every pod in the namespace (current and future — postgres/
+# redis/rabbitmq/keycloak from #10-#12 need it too) needs egress to kube-dns/CoreDNS in kube-system.
+# No podSelector on the DNS side: kind/kubeadm/GKE all label the namespace, not always the pod, the same
+# way, so matching on the namespace alone is the portable choice.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-dns-egress
+  namespace: platform-lab
+  labels:
+    app.kubernetes.io/part-of: platform-lab
+spec:
+  podSelector: {}
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53

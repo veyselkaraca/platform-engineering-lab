@@ -1,0 +1,58 @@
+# 9-4: user-service, order-service and notification-worker each hold a DATABASE_URL (see
+# infrastructure/helm/platform-lab/values.yaml secretEnv) and need Postgres; api-gateway does not.
+# Two objects, both required: default-deny blocks Egress on the caller AND Ingress on postgres
+# independently — confirmed with a kind+Calico smoke test where an Egress-only rule still timed out
+# until the matching Ingress rule below was added (same two-sided gap
+# 21-allow-api-gateway-egress-to-backends.yaml fixes on the gateway path).
+#
+# ASSUMPTION (unverified until #12 lands): selects app.kubernetes.io/name: postgres and port 5432,
+# following the chart's existing label convention (infrastructure/helm/platform-lab/templates/_helpers.tpl).
+# #12 ("Run PostgreSQL, Redis and RabbitMQ in the cluster") is still open — whoever implements it must
+# either match this label/port or this policy needs updating to match theirs.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-egress-to-postgres
+  namespace: platform-lab
+  labels:
+    app.kubernetes.io/part-of: platform-lab
+spec:
+  podSelector:
+    matchExpressions:
+      - key: app.kubernetes.io/name
+        operator: In
+        values: [user-service, order-service, notification-worker]
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: postgres
+      ports:
+        - protocol: TCP
+          port: 5432
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-postgres-ingress-from-services
+  namespace: platform-lab
+  labels:
+    app.kubernetes.io/part-of: platform-lab
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: postgres
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchExpressions:
+              - key: app.kubernetes.io/name
+                operator: In
+                values: [user-service, order-service, notification-worker]
+      ports:
+        - protocol: TCP
+          port: 5432

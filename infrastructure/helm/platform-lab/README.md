@@ -45,5 +45,7 @@ Rollback: `helm rollback platform-lab <revision>` restores the previous chart+va
 `rollingUpdate.maxUnavailable: 0`.
 
 Out of scope here: TLS (not required by #8 either — plain HTTP Gateway/HTTPRoute, AGENTS.md §7.12),
-NetworkPolicies (#9), the observability/Keycloak/data charts (#10-#12), the Secrets themselves
-(`docs/operations/runbooks/kubernetes-secrets.md`) and automated deploy (#14/#15).
+the observability/Keycloak/data charts (#10-#12), the Secrets themselves
+(`docs/operations/runbooks/kubernetes-secrets.md`) and automated deploy (#14/#15). NetworkPolicies
+(`infrastructure/kubernetes/policies/`, #9) select on this chart's own pod labels but live outside it —
+see `infrastructure/kubernetes/README.md`.
