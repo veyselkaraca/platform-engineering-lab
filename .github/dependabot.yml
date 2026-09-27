@@ -14,6 +14,12 @@ updates:
       - dependency-name: "jose"
         versions: [">=6"]
         # ^5 is the last CommonJS major; later majors are ESM-only
+      - dependency-name: "typescript"
+        versions: [">=7"]
+        # ts-jest@29 peer-depends on typescript <7
+      - dependency-name: "http-proxy-middleware"
+        versions: [">=4"]
+        # 4.x is ESM-only; this service is CommonJS
 
   - package-ecosystem: "npm"
     directory: "/services/order-service"
@@ -27,6 +33,11 @@ updates:
         versions: [">=12"]
       - dependency-name: "jose"
         versions: [">=6"]
+      - dependency-name: "typescript"
+        versions: [">=7"]
+      - dependency-name: "ioredis"
+        versions: [">=6"]
+        # typeorm@1.1.1 peer-depends on ioredis ^5.0.4
 
   - package-ecosystem: "npm"
     directory: "/services/notification-worker"
@@ -40,6 +51,8 @@ updates:
         versions: [">=12"]
       - dependency-name: "jose"
         versions: [">=6"]
+      - dependency-name: "typescript"
+        versions: [">=7"]
 
   - package-ecosystem: "npm"
     directory: "/services/user-service"
@@ -53,6 +66,8 @@ updates:
         versions: [">=12"]
       - dependency-name: "jose"
         versions: [">=6"]
+      - dependency-name: "typescript"
+        versions: [">=7"]
 
   - package-ecosystem: "github-actions"
     directory: "/"
