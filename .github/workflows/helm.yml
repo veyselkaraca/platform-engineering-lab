@@ -80,17 +80,29 @@ jobs:
       - name: helm template
         run: helm template platform-data infrastructure/helm/platform-data > /tmp/platform-data.yaml
 
-      # Redis (Deployment+Service) and PostgreSQL (CloudNativePG Cluster + db-init Job+ConfigMap)
-      # implemented so far; grows again once RabbitMQ lands.
+      # Redis (Deployment+Service), PostgreSQL (CloudNativePG Cluster + db-init Job+ConfigMap) and
+      # RabbitMQ (RabbitmqCluster + rabbitmq-init Job+ConfigMap) — #12 in full.
       - name: Verify rendered resource counts
         run: |
-          for kind in Deployment Service Cluster Job ConfigMap; do
+          for kind in Deployment Service Cluster; do
             count=$(grep -c "^kind: $kind$" /tmp/platform-data.yaml)
             if [ "$count" -ne 1 ]; then
               echo "expected 1 $kind resource, got $count" >&2
               exit 1
             fi
           done
+          for kind in Job ConfigMap; do
+            count=$(grep -c "^kind: $kind$" /tmp/platform-data.yaml)
+            if [ "$count" -ne 2 ]; then
+              echo "expected 2 $kind resources, got $count" >&2
+              exit 1
+            fi
+          done
+          count=$(grep -c "^kind: RabbitmqCluster$" /tmp/platform-data.yaml)
+          if [ "$count" -ne 1 ]; then
+            echo "expected 1 RabbitmqCluster resource, got $count" >&2
+            exit 1
+          fi
 
   kubernetes-manifests:
     runs-on: ubuntu-24.04

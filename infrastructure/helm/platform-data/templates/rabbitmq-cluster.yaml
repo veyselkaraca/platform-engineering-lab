@@ -1,0 +1,23 @@
+{{/*
+Requires the RabbitMQ Cluster Operator (rabbitmq-system namespace) to already be installed cluster-wide
+— see infrastructure/kubernetes/README.md's "one-time per-cluster bootstrap". The operator creates and
+manages the actual StatefulSet/PVC/Service (named after this Cluster, i.e. "rabbitmq") and
+auto-generates the <name>-default-user Secret that rabbitmq-init-job.yaml and
+docs/operations/runbooks/kubernetes-secrets.md read from — this chart never creates that Secret itself.
+management, prometheus and peer-discovery-k8s are already "essential" plugins the operator always
+enables; rabbitmq_shovel (messaging/rabbitmq/enabled_plugins) is deliberately not added here — it is a
+docker-compose-only debugging aid for scripts/replay-dlq.sh, which runs against compose, not the
+cluster (see infrastructure/kubernetes/policies/42-allow-egress-to-rabbitmq.yaml).
+*/}}
+apiVersion: rabbitmq.com/v1beta1
+kind: RabbitmqCluster
+metadata:
+  name: {{ .Values.rabbitmq.clusterName }}
+  labels:
+    {{- include "platform-data.labels" (dict "root" $ "name" "rabbitmq") | nindent 4 }}
+spec:
+  replicas: {{ .Values.rabbitmq.replicas }}
+  resources:
+    {{- toYaml .Values.rabbitmq.resources | nindent 4 }}
+  persistence:
+    storage: {{ .Values.rabbitmq.storage }}

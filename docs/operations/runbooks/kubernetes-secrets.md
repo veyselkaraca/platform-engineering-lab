@@ -10,9 +10,9 @@ consumes either way.
 
 ## Prerequisite
 
-The `platform-lab` Namespace exists (`kubectl apply -f infrastructure/kubernetes/namespaces/`) and, for
-section 1, `infrastructure/helm/platform-data` (#12) is already installed — PostgreSQL comes from its
-CloudNativePG `Cluster`, which auto-generates the `postgres-superuser` Secret this section reads from.
+The `platform-lab` Namespace exists (`kubectl apply -f infrastructure/kubernetes/namespaces/`) and
+`infrastructure/helm/platform-data` (#12) is already installed — sections 1 and 2 both read from
+Secrets CloudNativePG and the RabbitMQ Cluster Operator auto-generate for their own clusters.
 
 ## 1. Per-service database credentials
 
@@ -44,14 +44,21 @@ all; CloudNativePG generates it randomly per cluster. Rotating it is a CloudNati
 ## 2. RabbitMQ credentials
 
 One Secret shared by `order-service` and `notification-worker` (both reference it in
-`infrastructure/helm/platform-lab/values.yaml`), key `RABBITMQ_URL`:
+`infrastructure/helm/platform-lab/values.yaml`), key `RABBITMQ_URL`. The RabbitMQ Cluster Operator
+auto-generates `rabbitmq-default-user` (username, password, host, port — AMQP 5672, already the
+in-cluster Service `rabbitmq`) for its `RabbitmqCluster`, same pattern as PostgreSQL's superuser Secret
+above:
 
 ```bash
+RMQ_USER=$(kubectl get secret rabbitmq-default-user -n platform-lab -o jsonpath='{.data.username}' | base64 -d)
+RMQ_PASS=$(kubectl get secret rabbitmq-default-user -n platform-lab -o jsonpath='{.data.password}' | base64 -d)
+
 kubectl create secret generic platform-lab-rabbitmq -n platform-lab \
-  --from-literal=RABBITMQ_URL="amqp://<user>:<password>@<rabbitmq-host>:5672"
+  --from-literal=RABBITMQ_URL="amqp://${RMQ_USER}:${RMQ_PASS}@rabbitmq:5672"
 ```
 
-`<rabbitmq-host>` comes from #12's chart once it exists.
+Rotation is a RabbitMQ Cluster Operator operation on `rabbitmq-default-user`, not a `kubectl create
+secret` edit — same caveat as PostgreSQL's superuser password above.
 
 ## 3. Keycloak admin credentials
 

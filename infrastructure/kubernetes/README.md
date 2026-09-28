@@ -52,6 +52,15 @@ kubectl apply --server-side -f \
 kubectl rollout status deployment -n cnpg-system cnpg-controller-manager --timeout=120s
 ```
 
+And the RabbitMQ Cluster Operator (#12 — `infrastructure/helm/platform-data`'s `RabbitmqCluster` CRD),
+pinned to v2.19.2 rather than latest — see `infrastructure/helm/platform-data/README.md` for why
+(v2.20+ needs cert-manager, a dependency this lab does not otherwise have a use for):
+
+```bash
+kubectl apply -f https://github.com/rabbitmq/cluster-operator/releases/download/v2.19.2/cluster-operator.yml
+kubectl rollout status deployment -n rabbitmq-system rabbitmq-cluster-operator --timeout=120s
+```
+
 `policies/` (#9) needs a CNI that actually enforces `NetworkPolicy` — kindnet, kind's default CNI, silently
 accepts the objects but never blocks traffic, so its test plan's "a blocked path is actually blocked"
 check would pass for the wrong reason. Recreate the local cluster with the default CNI disabled and
@@ -86,6 +95,20 @@ bootstrap) actually installed:
   Postgres) kept working across `kubectl apply` — conntrack allows established flows through even
   without a matching rule for new ones. Don't trust "still Ready" as proof a policy is correct; restart
   the pod (`kubectl delete pod`) to force a fresh connection under the current rules.
+
+Re-verified 2026-09-28 with #12's real operators/CRDs (CloudNativePG, RabbitMQ Cluster Operator) in
+place of the throwaway stand-ins above, specifically to check something the first pass could not: the
+`db-init`/`rabbitmq-init` Jobs (`infrastructure/helm/platform-data`) re-run on every `helm upgrade`
+(`hook-delete-policy: before-hook-creation,hook-succeeded`, per #12-3/#12-4's "idempotent on every
+apply"), but `policies/`'s documented "Apply order" only guarantees the *first* `helm install` predates
+these policies — every later `helm upgrade` happens with default-deny already enforced. Caught exactly
+that gap: with the policies from #9 applied, `helm upgrade` failed with `db-init` stuck `InProgress` and
+`pg_isready` logging `no response` — the network-block symptom this page already describes, not an
+application error. `postgres-db-init` and `rabbitmq-init` were missing from `40`/`42`'s caller
+allow-lists; `40-allow-egress-to-postgres.yaml` and `42-allow-egress-to-rabbitmq.yaml` now include them
+(RabbitMQ's as a separate rule pair on port 15672, since `rabbitmqadmin` needs the management API, not
+AMQP). Re-ran `helm upgrade` with the fixed policies applied: both hooks completed. Redis needed no such
+fix — it has no init Job.
 
 Confirms Calico is enforcing, not just accepting, these objects — kindnet accepts the same manifests
 without blocking anything.

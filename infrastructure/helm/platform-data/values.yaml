@@ -12,6 +12,12 @@
 # DATABASE_URL Secret (docs/operations/runbooks/kubernetes-secrets.md) share one admin identity across
 # the four databases, exactly like docker-compose's single POSTGRES_USER today — this phase translates
 # that layout to the cluster, it does not redesign per-service DB ownership.
+#
+# RabbitMQ is the RabbitMQ Cluster Operator's RabbitmqCluster CRD (#12-1), also cluster infrastructure
+# installed once per cluster. Pinned to operator v2.19.2, not latest (v2.23.0): v2.20+ ships an
+# admission webhook whose TLS certificate requires cert-manager, a second cluster-wide operator with no
+# other use in this lab (AGENTS.md §7.12 — unjustified operational burden for one small CR). See
+# README.md for the full decision.
 
 global:
   imagePullPolicy: IfNotPresent
@@ -45,3 +51,13 @@ postgres:
   # client image for the db-init Job (pg_isready/psql only, never runs the server) — matches the
   # server's own major version.
   clientImage: postgres:17-alpine
+
+rabbitmq:
+  clusterName: rabbitmq
+  replicas: 1
+  # Same image compose already uses for both the server and the rabbitmqadmin CLI in rabbitmq-init.
+  image: rabbitmq:4.2.5-management-alpine
+  storage: 1Gi
+  resources:
+    requests: { cpu: 250m, memory: 512Mi }
+    limits: { cpu: 500m, memory: 1Gi }

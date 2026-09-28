@@ -14,14 +14,28 @@ They don't have to share an answer (issue #12's own requirement):
 |---|---|---|---|
 | Redis | Plain Deployment + Service, no operator, no Bitnami chart | **Accepted, implemented** | Single instance, no persistence requirement (#12-5; AGENTS.md §21 — Redis is never authoritative), so there is no failover/PVC/upgrade behavior worth an operator's CRD/controller overhead. Bitnami's free charts/images are frozen since Aug 2025 (moved to unsupported `bitnamilegacy`), ruling out `bitnami/redis` even as the "default" option (issue #12 comment, verified 2026-09-27). Persistence is disabled outright (`--save "" --appendonly no`) rather than left at the image's default, so a restart never leaves a stale save file behind and order-service's existing fallback-to-user-service path (ADR-001) stays the only recovery story. |
 | PostgreSQL | CloudNativePG operator | **Accepted, implemented** | Encodes PVC, failover and minor-version upgrade handling a bespoke StatefulSet would reinvent (AGENTS.md §7.12). Operational cost: one more CRD/controller (`cnpg-system` namespace). Confirmed conflict, now fixed: CNPG's default Pod/PVC labels are `cnpg.io/cluster: <name>`, never `app.kubernetes.io/name` — the operator does not propagate labels from the `Cluster`'s own metadata unless separately configured to inherit them (extra machinery not worth adding just to satisfy a naming convention). `infrastructure/kubernetes/policies/40-allow-egress-to-postgres.yaml` now selects on `cnpg.io/cluster: postgres` instead. `enableSuperuserAccess: true` so `db-init` (#12-3) and every service's `DATABASE_URL` Secret share one admin identity across the four databases — same single-user model `docker-compose.yml` already uses, not a redesign. |
-| RabbitMQ | RabbitMQ Cluster Operator | Proposed, not yet implemented | Same reasoning as PostgreSQL. Installs from a GitHub release manifest, not a Helm repo (issue #12 comment). Naming the `RabbitmqCluster` resource `rabbitmq` should make the operator's default labels satisfy `infrastructure/kubernetes/policies/42-allow-egress-to-rabbitmq.yaml`'s `app.kubernetes.io/name: rabbitmq` assumption directly — to confirm when implemented. |
+| RabbitMQ | RabbitMQ Cluster Operator, pinned to v2.19.2 | **Accepted, implemented** | Installs from a GitHub release manifest, not a Helm repo (issue #12 comment). Confirmed: naming the `RabbitmqCluster` resource `rabbitmq` makes the operator's default labels (`app.kubernetes.io/name: rabbitmq`) satisfy `infrastructure/kubernetes/policies/42-allow-egress-to-rabbitmq.yaml`'s assumption exactly — no policy change needed for that path, unlike Postgres. Pinned below latest (v2.23.0) deliberately, not by default drift — see the version note underneath this table. |
+
+Not evaluated: the RabbitMQ Messaging Topology Operator (a fourth operator that would let `definitions.json`'s exchanges/queues/bindings be declared as their own CRDs instead of the `rabbitmqadmin` Job) — #12's own design note says reuse the existing script as a Job, and a fourth operator to declare three exchanges and three queues is exactly the complexity AGENTS.md §7.12 asks to justify first.
+
+### Version note: RabbitMQ Cluster Operator v2.19.2, not latest
+
+Checked the actual release manifests before picking a version: starting at v2.20.0, `cluster-operator.yml`
+adds a `MutatingWebhookConfiguration`/`ValidatingWebhookConfiguration` whose TLS certificate is issued by
+a cert-manager `Certificate` resource — cert-manager becomes a **second** cluster-wide operator this lab
+would need only to install the first one, for a single small `RabbitmqCluster` CR that does not need
+admission-webhook validation to be correct. v2.19.2 (the last release before this) has no cert-manager
+reference and no webhook at all — confirmed by diffing the two manifests directly, not by assumption.
+Revisit this pin if a future dependency actually needs cert-manager for something else, at which point
+the operational cost is already paid and upgrading the RabbitMQ operator past v2.20 stops being a
+standalone burden.
 
 ## Decision (#12-6): backup/restore
 
 | Dependency | Decision | Status |
 |---|---|---|
 | PostgreSQL | Deferred to a follow-up issue | CloudNativePG's backup story (Barman Cloud plugin) needs an S3-compatible object-storage target this lab does not provision anywhere else; adding one just for this would be new infrastructure without the rest of the platform needing it (AGENTS.md §7.12). This is the "not implemented yet, tracked as a follow-up issue" case #12-6 explicitly allows for one of the two dependencies. |
-| RabbitMQ | Not recorded yet | Depends on the RabbitMQ phase landing first. |
+| RabbitMQ | The topology already is backed up; message data deliberately is not | `messaging/rabbitmq/definitions/definitions.json` is version-controlled and is exactly what `rabbitmq-init` replays on every apply (#12-4) — recreating the exchanges/queues/bindings from source control on a fresh cluster **is** the restore procedure, no separate backup mechanism needed for topology. In-flight messages are not backed up: RabbitMQ here is best-effort async delivery with retry+DLQ (ADR-001's own stated limitation), not a durable ledger, so message loss on total cluster loss is an accepted characteristic of the existing design, not a new gap #12 introduces. |
 
 Not a silent gap either way — both rows are a stated decision, not an omission.
 
@@ -75,6 +89,48 @@ platform-data infrastructure/helm/platform-data -n platform-lab`) also creates:
   (`docs/operations/runbooks/kubernetes-secrets.md`), now against the real `postgres-rw` host and the
   operator-generated superuser password instead of a placeholder.
 
+## RabbitMQ
+
+Requires the RabbitMQ Cluster Operator installed cluster-wide first
+(`infrastructure/kubernetes/README.md` "one-time per-cluster bootstrap", pinned version — see the
+decision above). The same install command also creates:
+
+- A `RabbitmqCluster` (name `rabbitmq`, 1 replica — matching compose's single broker; #12's own scope
+  note says single-node/mirrored is enough for the lab) — the operator then creates the
+  `rabbitmq-server-0` StatefulSet Pod, its PVC, the `rabbitmq`/`rabbitmq-nodes` Services and the
+  `rabbitmq-default-user` Secret on its own. No `additionalPlugins` set: `rabbitmq_management` is
+  already one of the operator's own "essential" always-on plugins (needed for `rabbitmqadmin` below),
+  and `rabbitmq_shovel` is deliberately left out — it is a docker-compose-only debugging aid for
+  `scripts/replay-dlq.sh`, which runs against compose, not the cluster (see
+  `infrastructure/kubernetes/policies/42-allow-egress-to-rabbitmq.yaml`).
+- A `rabbitmq-init` Job (#12-4): a `wait-for-rabbitmq` initContainer polls `rabbitmqadmin ... list
+  vhosts` against the management API (same wait-has-to-live-in-the-Job reasoning as `db-init`), then the
+  main container runs the exact same `rabbitmqadmin definitions import --file` compose's `rabbitmq-init`
+  already runs, against `files/definitions.json` — a byte-for-byte copy of
+  `messaging/rabbitmq/definitions/definitions.json` (same Helm `.Files` constraint as
+  `files/init-databases.sh`; keep the two in sync by hand if the topology changes).
+- Same `post-install,post-upgrade` hook reasoning as `db-init`, same idempotency guarantee.
+- `docs/operations/runbooks/kubernetes-secrets.md`'s `platform-lab-rabbitmq` Secret is built from
+  `rabbitmq-default-user`'s auto-generated username/password against the real `rabbitmq` Service host,
+  same pattern as PostgreSQL.
+
+## A real gap `helm template` could not have caught: init Jobs vs. enforced NetworkPolicy
+
+`db-init` and `rabbitmq-init` re-run on **every** `helm upgrade` (`hook-delete-policy:
+before-hook-creation,hook-succeeded`, per #12-3/#12-4's "idempotent on every apply"), but
+`infrastructure/kubernetes/README.md`'s documented "Apply order" only guarantees the *first* `helm
+install` happens before `policies/` (#9) is applied — every later `helm upgrade` runs with default-deny
+already enforced. Tested this directly (kind + Calico, both operators, policies applied, then `helm
+upgrade` to force the Jobs to re-run): `db-init` hung, `pg_isready` logging `no response` on every
+retry — the exact silent-network-block symptom `infrastructure/kubernetes/README.md`'s diagnosis guide
+already describes, not an application error. Neither `postgres-db-init` nor `rabbitmq-init` were in
+`40`/`42`'s caller allow-lists (those were written for the *application* services, before this chart's
+own Jobs existed). Fixed in both files: `40-allow-egress-to-postgres.yaml` adds `postgres-db-init` to
+the existing caller list (same port, 5432); `42-allow-egress-to-rabbitmq.yaml` adds a separate rule pair
+for `rabbitmq-init` on port 15672 (the management API `rabbitmqadmin` needs, not AMQP 5672) rather than
+widening the app services' existing 5672-only rule. Re-ran the same test with the fixed policies: both
+hooks completed. Redis needed no such fix — it has no init Job.
+
 ## Verification (real cluster, not just `helm template`)
 
 `helm lint`/`helm template` (CI: `.github/workflows/helm.yml`) only catch structural regressions —
@@ -116,10 +172,29 @@ kubectl exec -n platform-lab postgres-1 -c postgres -- psql -U postgres -d postg
 - `kubectl delete pod postgres-1`: CNPG rescheduled it, it reattached to the same PVC, and all four
   databases were still there once it reported Ready — the #12 test plan's "Postgres pod is killed" case.
 
-Repeat this same sequence for RabbitMQ once that phase lands, extending the `helm upgrade --install` and
-smoke-check steps rather than replacing them.
+Result (2026-09-28, RabbitMQ — same cluster, both operators installed):
 
-## Out of scope here (this phase)
+```bash
+helm upgrade --install platform-data infrastructure/helm/platform-data -n platform-lab
+kubectl exec -n platform-lab rabbitmq-server-0 -- rabbitmqadmin --host localhost \
+  --username "$(kubectl get secret rabbitmq-default-user -n platform-lab -o jsonpath='{.data.username}' | base64 -d)" \
+  --password "$(kubectl get secret rabbitmq-default-user -n platform-lab -o jsonpath='{.data.password}' | base64 -d)" \
+  list queues
+```
 
-RabbitMQ, its `rabbitmq-init` Job equivalent (#12-4), and RabbitMQ's #12-6 backup/restore decision —
-tracked in #12, implemented in a later phase.
+- `helm upgrade --install` returned only once `rabbitmq-init` had completed; `list queues`/`list
+  exchanges` afterwards showed exactly `notification.order-created`, `.retry` and `.dlq`, and the
+  `orders`/`orders.retry`/`orders.requeue` exchanges — matching `messaging/rabbitmq/README.md`'s topology
+  diagram exactly.
+- Re-ran `helm upgrade --install`: succeeded again, same topology, no duplicate/error objects — #12-4's
+  idempotency requirement.
+- `kubectl delete pod rabbitmq-server-0`: rescheduled, reattached to its PVC, same topology present once
+  Ready — the #12 test plan's pod-killed case, for RabbitMQ as well as PostgreSQL.
+- The NetworkPolicy-enforcement gap and fix described above was found and re-verified in this same pass
+  (separate kind+Calico cluster, both operators, `policies/` applied, `helm upgrade` forced to re-run
+  both Jobs).
+
+All three dependencies (#12) are implemented and verified as of 2026-09-28. Remaining open items are the
+RabbitMQ backup/restore decision's own follow-through (none needed — see the decision table above) and
+keeping `infrastructure/kubernetes/policies/`'s `cnpg.io/cluster`/`app.kubernetes.io/name` assumptions
+in sync if either operator's labeling ever changes.
