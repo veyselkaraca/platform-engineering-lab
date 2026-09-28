@@ -10,39 +10,55 @@ consumes either way.
 
 ## Prerequisite
 
-The `platform-lab` Namespace exists (`kubectl apply -f infrastructure/kubernetes/namespaces/`).
+The `platform-lab` Namespace exists (`kubectl apply -f infrastructure/kubernetes/namespaces/`) and
+`infrastructure/helm/platform-data` (#12) is already installed — sections 1 and 2 both read from
+Secrets CloudNativePG and the RabbitMQ Cluster Operator auto-generate for their own clusters.
 
 ## 1. Per-service database credentials
 
-One Secret per service, key `DATABASE_URL`, matching what
-`infrastructure/docker/docker-compose.yml` passes today (same connection-string shape, different host —
-in-cluster PostgreSQL comes from #12, so replace `<postgres-host>` once that Service exists):
+One Secret per service, key `DATABASE_URL`, matching what `infrastructure/docker/docker-compose.yml`
+passes today (same connection-string shape, different host: the in-cluster Service is `postgres-rw`,
+CloudNativePG's naming for its read-write endpoint, not a bare `postgres`). All four databases share the
+one superuser CloudNativePG generates (`enableSuperuserAccess: true`,
+`infrastructure/helm/platform-data/values.yaml`) — same single-admin-user model as
+`docker-compose.yml`'s `POSTGRES_USER`, not a redesign:
 
 ```bash
+PGPASSWORD=$(kubectl get secret postgres-superuser -n platform-lab -o jsonpath='{.data.password}' | base64 -d)
+
 kubectl create secret generic user-service-db -n platform-lab \
-  --from-literal=DATABASE_URL="postgres://<user>:<password>@<postgres-host>:5432/user_service"
+  --from-literal=DATABASE_URL="postgres://postgres:${PGPASSWORD}@postgres-rw:5432/user_service"
 
 kubectl create secret generic order-service-db -n platform-lab \
-  --from-literal=DATABASE_URL="postgres://<user>:<password>@<postgres-host>:5432/order_service"
+  --from-literal=DATABASE_URL="postgres://postgres:${PGPASSWORD}@postgres-rw:5432/order_service"
 
 kubectl create secret generic notification-worker-db -n platform-lab \
-  --from-literal=DATABASE_URL="postgres://<user>:<password>@<postgres-host>:5432/notification_worker"
+  --from-literal=DATABASE_URL="postgres://postgres:${PGPASSWORD}@postgres-rw:5432/notification_worker"
 ```
 
-Never reuse the docker-compose `.env` password in a real environment; generate a fresh one
-(e.g. `openssl rand -base64 24`) per environment.
+The password is not "never reuse the compose `.env` value" advice here — it never came from this repo at
+all; CloudNativePG generates it randomly per cluster. Rotating it is a CloudNativePG operation
+(`kubectl cnpg` plugin or deleting `postgres-superuser` and letting the operator recreate it), not a
+`kubectl create secret` edit — do that first, then redo the three commands above with the new password.
 
 ## 2. RabbitMQ credentials
 
 One Secret shared by `order-service` and `notification-worker` (both reference it in
-`infrastructure/helm/platform-lab/values.yaml`), key `RABBITMQ_URL`:
+`infrastructure/helm/platform-lab/values.yaml`), key `RABBITMQ_URL`. The RabbitMQ Cluster Operator
+auto-generates `rabbitmq-default-user` (username, password, host, port — AMQP 5672, already the
+in-cluster Service `rabbitmq`) for its `RabbitmqCluster`, same pattern as PostgreSQL's superuser Secret
+above:
 
 ```bash
+RMQ_USER=$(kubectl get secret rabbitmq-default-user -n platform-lab -o jsonpath='{.data.username}' | base64 -d)
+RMQ_PASS=$(kubectl get secret rabbitmq-default-user -n platform-lab -o jsonpath='{.data.password}' | base64 -d)
+
 kubectl create secret generic platform-lab-rabbitmq -n platform-lab \
-  --from-literal=RABBITMQ_URL="amqp://<user>:<password>@<rabbitmq-host>:5672"
+  --from-literal=RABBITMQ_URL="amqp://${RMQ_USER}:${RMQ_PASS}@rabbitmq:5672"
 ```
 
-`<rabbitmq-host>` comes from #12's chart once it exists.
+Rotation is a RabbitMQ Cluster Operator operation on `rabbitmq-default-user`, not a `kubectl create
+secret` edit — same caveat as PostgreSQL's superuser password above.
 
 ## 3. Keycloak admin credentials
 

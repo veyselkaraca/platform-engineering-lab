@@ -1,0 +1,107 @@
+{{/*
+#12-4: Kubernetes Job equivalent of docker-compose's rabbitmq-init, idempotent on every apply — same
+`rabbitmqadmin definitions import` reused as-is (issue #12's own design note), same post-install (not
+pre-install) reasoning as db-init-job.yaml.
+--host only (no --port): rabbitmqadmin defaults to the HTTP API port (15672), exactly like
+docker-compose.yml's own rabbitmq-init entrypoint, which never passes --port either.
+*/}}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: rabbitmq-init
+  labels:
+    {{- include "platform-data.labels" (dict "root" $ "name" "rabbitmq") | nindent 4 }}
+  annotations:
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-weight": "0"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  backoffLimit: 6
+  template:
+    metadata:
+      labels:
+        {{- include "platform-data.selectorLabels" (dict "name" "rabbitmq-init") | nindent 8 }}
+    spec:
+      restartPolicy: Never
+      securityContext:
+        runAsNonRoot: true
+        # rabbitmq:4.2.5-management-alpine's built-in "rabbitmq" account (uid/gid 100).
+        runAsUser: 100
+        runAsGroup: 100
+      initContainers:
+        - name: wait-for-rabbitmq
+          image: "{{ .Values.rabbitmq.image }}"
+          command:
+            - sh
+            - -c
+            - |
+              set -eu
+              until rabbitmqadmin --host "$RABBITMQ_HOST" --username "$RABBITMQ_USERNAME" --password "$RABBITMQ_PASSWORD" list vhosts >/dev/null 2>&1; do
+                sleep 2
+              done
+          env:
+            - name: RABBITMQ_HOST
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.rabbitmq.clusterName }}-default-user
+                  key: host
+            - name: RABBITMQ_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.rabbitmq.clusterName }}-default-user
+                  key: username
+            - name: RABBITMQ_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.rabbitmq.clusterName }}-default-user
+                  key: password
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+      containers:
+        - name: rabbitmq-init
+          image: "{{ .Values.rabbitmq.image }}"
+          command:
+            - rabbitmqadmin
+            - --host
+            - "$(RABBITMQ_HOST)"
+            - --username
+            - "$(RABBITMQ_USERNAME)"
+            - --password
+            - "$(RABBITMQ_PASSWORD)"
+            - definitions
+            - import
+            - --file
+            - /definitions.json
+          env:
+            - name: RABBITMQ_HOST
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.rabbitmq.clusterName }}-default-user
+                  key: host
+            - name: RABBITMQ_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.rabbitmq.clusterName }}-default-user
+                  key: username
+            - name: RABBITMQ_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.rabbitmq.clusterName }}-default-user
+                  key: password
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: definitions
+              mountPath: /definitions.json
+              subPath: definitions.json
+              readOnly: true
+      volumes:
+        - name: definitions
+          configMap:
+            name: rabbitmq-init-definitions

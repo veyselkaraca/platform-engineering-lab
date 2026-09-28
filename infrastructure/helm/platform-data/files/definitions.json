@@ -1,0 +1,92 @@
+{
+  "vhosts": [
+    {
+      "name": "/"
+    }
+  ],
+  "exchanges": [
+    {
+      "name": "orders",
+      "vhost": "/",
+      "type": "topic",
+      "durable": true,
+      "auto_delete": false,
+      "internal": false,
+      "arguments": {}
+    },
+    {
+      "name": "orders.retry",
+      "vhost": "/",
+      "type": "direct",
+      "durable": true,
+      "auto_delete": false,
+      "internal": false,
+      "arguments": {}
+    },
+    {
+      "name": "orders.requeue",
+      "vhost": "/",
+      "type": "direct",
+      "durable": true,
+      "auto_delete": false,
+      "internal": false,
+      "arguments": {}
+    }
+  ],
+  "queues": [
+    {
+      "name": "notification.order-created",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {
+        "x-dead-letter-exchange": "orders.retry",
+        "x-dead-letter-routing-key": "notification.order-created"
+      }
+    },
+    {
+      "name": "notification.order-created.retry",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {
+        "x-message-ttl": 10000,
+        "x-dead-letter-exchange": "orders.requeue",
+        "x-dead-letter-routing-key": "notification.order-created"
+      }
+    },
+    {
+      "name": "notification.order-created.dlq",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {}
+    }
+  ],
+  "bindings": [
+    {
+      "source": "orders",
+      "vhost": "/",
+      "destination": "notification.order-created",
+      "destination_type": "queue",
+      "routing_key": "order.created",
+      "arguments": {}
+    },
+    {
+      "source": "orders.retry",
+      "vhost": "/",
+      "destination": "notification.order-created.retry",
+      "destination_type": "queue",
+      "routing_key": "notification.order-created",
+      "arguments": {}
+    },
+    {
+      "source": "orders.requeue",
+      "vhost": "/",
+      "destination": "notification.order-created",
+      "destination_type": "queue",
+      "routing_key": "notification.order-created",
+      "arguments": {}
+    }
+  ]
+}

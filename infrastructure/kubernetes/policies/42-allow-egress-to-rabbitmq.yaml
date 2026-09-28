@@ -1,10 +1,10 @@
 # 9-4: order-service (publishes order.created) and notification-worker (consumes it) use RabbitMQ;
 # user-service does not (RABBITMQ_URL in infrastructure/helm/platform-lab/values.yaml's secretEnv).
 #
-# ASSUMPTION (unverified until #12 lands): app.kubernetes.io/name: rabbitmq, port 5672 (AMQP). The
-# management port (15672) is a local-compose-only debugging aid (scripts/replay-dlq.sh,
-# tests/support/broker.mjs run against compose, not the cluster) and is deliberately not opened here.
-# See the same note in 40-allow-egress-to-postgres.yaml.
+# Resolved by #12 (infrastructure/helm/platform-data): app.kubernetes.io/name: rabbitmq, port 5672
+# (AMQP) confirmed correct against a real kind+Calico cluster with the RabbitMQ Cluster Operator
+# installed — naming the RabbitmqCluster "rabbitmq" makes the operator's own default label match this
+# assumption exactly, no change needed for the app services' path.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -52,3 +52,54 @@ spec:
       ports:
         - protocol: TCP
           port: 5672
+---
+# The #12-4 Job (infrastructure/helm/platform-data/templates/rabbitmq-init-job.yaml) needs the
+# management HTTP API (15672), not AMQP — rabbitmqadmin never opens an AMQP connection. Kept as its own
+# rule rather than added to the pair above: opening 15672 for order-service/notification-worker too
+# would undo the "management port deliberately not opened for app services" boundary this file
+# originally drew (still true — only the init Job, not the app services, gets it). Found the same way
+# as postgres-db-init in 40-allow-egress-to-postgres.yaml: this Job re-runs on every `helm upgrade`
+# (hook-delete-policy), so every upgrade after the first happens with these policies already enforced.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-rabbitmq-init-egress-to-rabbitmq
+  namespace: platform-lab
+  labels:
+    app.kubernetes.io/part-of: platform-lab
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: rabbitmq-init
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: rabbitmq
+      ports:
+        - protocol: TCP
+          port: 15672
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-rabbitmq-ingress-from-rabbitmq-init
+  namespace: platform-lab
+  labels:
+    app.kubernetes.io/part-of: platform-lab
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: rabbitmq
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: rabbitmq-init
+      ports:
+        - protocol: TCP
+          port: 15672

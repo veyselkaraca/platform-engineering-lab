@@ -5,10 +5,21 @@
 # until the matching Ingress rule below was added (same two-sided gap
 # 21-allow-api-gateway-egress-to-backends.yaml fixes on the gateway path).
 #
-# ASSUMPTION (unverified until #12 lands): selects app.kubernetes.io/name: postgres and port 5432,
-# following the chart's existing label convention (infrastructure/helm/platform-lab/templates/_helpers.tpl).
-# #12 ("Run PostgreSQL, Redis and RabbitMQ in the cluster") is still open — whoever implements it must
-# either match this label/port or this policy needs updating to match theirs.
+# Resolved by #12 (infrastructure/helm/platform-data): the app.kubernetes.io/name: postgres assumption
+# this policy carried before #12 landed does NOT match reality. PostgreSQL is CloudNativePG's Cluster
+# CRD (name "postgres"), not a plain Deployment — the operator labels every Pod/PVC it manages with
+# cnpg.io/cluster: <cluster name>, never app.kubernetes.io/name, and does not propagate labels from the
+# Cluster's own metadata unless the operator is separately configured to (out of scope here, see
+# infrastructure/helm/platform-data/README.md). Verified against a real kind cluster with the CNPG
+# operator installed: port 5432 was already correct.
+#
+# postgres-db-init (the #12-3 Job, infrastructure/helm/platform-data/templates/db-init-job.yaml) is in
+# the same caller list, not a separate rule: found by testing this policy for real with Calico
+# enforcing it (not just kindnet accepting it) — the Job hung on `pg_isready` ("no response", the
+# silent-network-block symptom this repo's own diagnosis guide describes) because it re-runs on every
+# `helm upgrade` (hook-delete-policy) and every upgrade after the first happens with this policy already
+# applied (infrastructure/kubernetes/README.md's "Apply order" only guarantees the *first* install
+# predates the policies). Same port (5432), so one rule covers both.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -21,14 +32,14 @@ spec:
     matchExpressions:
       - key: app.kubernetes.io/name
         operator: In
-        values: [user-service, order-service, notification-worker]
+        values: [user-service, order-service, notification-worker, postgres-db-init]
   policyTypes:
     - Egress
   egress:
     - to:
         - podSelector:
             matchLabels:
-              app.kubernetes.io/name: postgres
+              cnpg.io/cluster: postgres
       ports:
         - protocol: TCP
           port: 5432
@@ -43,7 +54,7 @@ metadata:
 spec:
   podSelector:
     matchLabels:
-      app.kubernetes.io/name: postgres
+      cnpg.io/cluster: postgres
   policyTypes:
     - Ingress
   ingress:
@@ -52,7 +63,7 @@ spec:
             matchExpressions:
               - key: app.kubernetes.io/name
                 operator: In
-                values: [user-service, order-service, notification-worker]
+                values: [user-service, order-service, notification-worker, postgres-db-init]
       ports:
         - protocol: TCP
           port: 5432

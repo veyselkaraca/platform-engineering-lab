@@ -1,0 +1,14 @@
+{{/*
+Verbatim copy of messaging/rabbitmq/definitions/definitions.json (files/definitions.json) — Helm's
+.Files can only read inside the chart, so the file is duplicated here rather than referenced from
+messaging/; keep the two in sync by hand if the topology ever changes.
+*/}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: rabbitmq-init-definitions
+  labels:
+    {{- include "platform-data.labels" (dict "root" $ "name" "rabbitmq") | nindent 4 }}
+data:
+  definitions.json: |-
+{{ .Files.Get "files/definitions.json" | indent 4 }}

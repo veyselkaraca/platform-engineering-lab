@@ -1,0 +1,21 @@
+{{/*
+Requires the CloudNativePG operator (cnpg-system namespace) to already be installed cluster-wide —
+see infrastructure/kubernetes/README.md's "one-time per-cluster bootstrap". The operator creates and
+manages the actual Pods/PVCs/Services (<name>-rw/-ro/-r) for this Cluster; it also auto-generates the
+<name>-superuser Secret (enableSuperuserAccess: true) that db-init-job.yaml and
+docs/operations/runbooks/kubernetes-secrets.md read from — this chart never creates that Secret itself.
+*/}}
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: {{ .Values.postgres.clusterName }}
+  labels:
+    {{- include "platform-data.labels" (dict "root" $ "name" "postgres") | nindent 4 }}
+spec:
+  instances: {{ .Values.postgres.instances }}
+  imageName: {{ .Values.postgres.imageName }}
+  enableSuperuserAccess: {{ .Values.postgres.enableSuperuserAccess }}
+  storage:
+    size: {{ .Values.postgres.storage.size }}
+  resources:
+    {{- toYaml .Values.postgres.resources | nindent 4 }}

@@ -1,0 +1,14 @@
+{{/*
+Verbatim copy of infrastructure/docker/config/postgres/init-databases.sh (files/init-databases.sh) —
+Helm's .Files can only read inside the chart directory, so the script is duplicated here rather than
+referenced from infrastructure/docker/; keep the two in sync by hand if the script ever changes.
+*/}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: db-init-script
+  labels:
+    {{- include "platform-data.labels" (dict "root" $ "name" "postgres") | nindent 4 }}
+data:
+  init-databases.sh: |-
+{{ .Files.Get "files/init-databases.sh" | indent 4 }}

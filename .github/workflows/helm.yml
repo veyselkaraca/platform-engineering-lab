@@ -66,6 +66,44 @@ jobs:
             done
           done
 
+  # #12: stateful dependencies (only Redis implemented so far, see infrastructure/helm/platform-data/README.md).
+  lint-and-template-data:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: azure/setup-helm@v4
+
+      - name: helm lint
+        run: helm lint infrastructure/helm/platform-data
+
+      - name: helm template
+        run: helm template platform-data infrastructure/helm/platform-data > /tmp/platform-data.yaml
+
+      # Redis (Deployment+Service), PostgreSQL (CloudNativePG Cluster + db-init Job+ConfigMap) and
+      # RabbitMQ (RabbitmqCluster + rabbitmq-init Job+ConfigMap) — #12 in full.
+      - name: Verify rendered resource counts
+        run: |
+          for kind in Deployment Service Cluster; do
+            count=$(grep -c "^kind: $kind$" /tmp/platform-data.yaml)
+            if [ "$count" -ne 1 ]; then
+              echo "expected 1 $kind resource, got $count" >&2
+              exit 1
+            fi
+          done
+          for kind in Job ConfigMap; do
+            count=$(grep -c "^kind: $kind$" /tmp/platform-data.yaml)
+            if [ "$count" -ne 2 ]; then
+              echo "expected 2 $kind resources, got $count" >&2
+              exit 1
+            fi
+          done
+          count=$(grep -c "^kind: RabbitmqCluster$" /tmp/platform-data.yaml)
+          if [ "$count" -ne 1 ]; then
+            echo "expected 1 RabbitmqCluster resource, got $count" >&2
+            exit 1
+          fi
+
   kubernetes-manifests:
     runs-on: ubuntu-24.04
     steps:
