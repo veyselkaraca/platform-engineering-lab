@@ -1,5 +1,29 @@
 # Changelog
 
+## [0.3.0](https://github.com/veyselkaraca/platform-engineering-lab/compare/v0.2.0...v0.3.0) (2026-09-28)
+
+
+### Features
+
+* **k8s:** add NetworkPolicies for platform-lab namespace ([#88](https://github.com/veyselkaraca/platform-engineering-lab/issues/88)) ([2c83c34](https://github.com/veyselkaraca/platform-engineering-lab/commit/2c83c3422e8bfc8ec942996a7fe4a294d68ac08e))
+* **k8s:** add NetworkPolicies for platform-lab namespace ([#9](https://github.com/veyselkaraca/platform-engineering-lab/issues/9)) ([2c83c34](https://github.com/veyselkaraca/platform-engineering-lab/commit/2c83c3422e8bfc8ec942996a7fe4a294d68ac08e))
+* **k8s:** add platform-lab Namespace and Gateway API ingress ([#87](https://github.com/veyselkaraca/platform-engineering-lab/issues/87)) ([c2e3e89](https://github.com/veyselkaraca/platform-engineering-lab/commit/c2e3e8970abe72b99393c7ebb54af87faee53caf))
+* **k8s:** add the platform-lab Helm chart for the four services ([#86](https://github.com/veyselkaraca/platform-engineering-lab/issues/86)) ([b4b653a](https://github.com/veyselkaraca/platform-engineering-lab/commit/b4b653ac97818481e3071779dbc776a6ee64dea2))
+* **k8s:** run PostgreSQL, Redis and RabbitMQ in the cluster ([#89](https://github.com/veyselkaraca/platform-engineering-lab/issues/89)) ([70d314c](https://github.com/veyselkaraca/platform-engineering-lab/commit/70d314c78f9f60e6623bd6780ed2d46b879bda9c))
+
+
+### CI/CD
+
+* **deps:** bump actions/upload-artifact from 4 to 7 ([#84](https://github.com/veyselkaraca/platform-engineering-lab/issues/84)) ([aba330a](https://github.com/veyselkaraca/platform-engineering-lab/commit/aba330a4e3bcff8e94173821defb2b6cbcc677bb))
+* **deps:** bump the minor-patch group ([8e4493b](https://github.com/veyselkaraca/platform-engineering-lab/commit/8e4493b90dcc896a8e9bd32a80899758c9c0dff2))
+* **deps:** bump the minor-patch group ([1bf6fb6](https://github.com/veyselkaraca/platform-engineering-lab/commit/1bf6fb6c589ed8c33a22046e421d4e5d5cffb38b))
+* **deps:** bump the minor-patch group ([0456f0f](https://github.com/veyselkaraca/platform-engineering-lab/commit/0456f0f2e4982e9dbee764cc6a208e41b3a080b3))
+* **deps:** bump the minor-patch group ([d497511](https://github.com/veyselkaraca/platform-engineering-lab/commit/d49751120ae6fa26037f94e86fe22cd11da85228))
+* **deps:** bump the minor-patch group in /services/api-gateway with 7 updates ([#80](https://github.com/veyselkaraca/platform-engineering-lab/issues/80)) ([1bf6fb6](https://github.com/veyselkaraca/platform-engineering-lab/commit/1bf6fb6c589ed8c33a22046e421d4e5d5cffb38b))
+* **deps:** bump the minor-patch group in /services/notification-worker with 7 updates ([#81](https://github.com/veyselkaraca/platform-engineering-lab/issues/81)) ([0456f0f](https://github.com/veyselkaraca/platform-engineering-lab/commit/0456f0f2e4982e9dbee764cc6a208e41b3a080b3))
+* **deps:** bump the minor-patch group in /services/order-service with 7 updates ([#83](https://github.com/veyselkaraca/platform-engineering-lab/issues/83)) ([d497511](https://github.com/veyselkaraca/platform-engineering-lab/commit/d49751120ae6fa26037f94e86fe22cd11da85228))
+* **deps:** bump the minor-patch group in /services/user-service with 7 updates ([#82](https://github.com/veyselkaraca/platform-engineering-lab/issues/82)) ([8e4493b](https://github.com/veyselkaraca/platform-engineering-lab/commit/8e4493b90dcc896a8e9bd32a80899758c9c0dff2))
+
 ## [0.2.0](https://github.com/veyselkaraca/platform-engineering-lab/compare/v0.1.1...v0.2.0) (2026-09-27)
 
 
